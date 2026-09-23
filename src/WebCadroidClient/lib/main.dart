@@ -74,26 +74,66 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCameraController(CameraDescription cameraDescription) async {
-    final previousController = _controller;
-    
+    final bool wasStreaming = _isStreaming;
+
+    // 2. Если стрим активен, останавливаем получение кадров со старой камеры
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      try {
+        await _controller!.stopImageStream();
+      } catch (e) {
+        debugPrint('Ошибка при остановке ImageStream: $e');
+      }
+    }
+
+    // 3. Создаем новый контроллер
     final newController = CameraController(
       cameraDescription,
       ResolutionPreset.high,
       enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420, // Явно задаем YUV420 для Android
     );
 
-    await previousController?.dispose();
-
+    // 4. Инициализируем НОВЫЙ контроллер, пока старый еще существует в памяти
     try {
       await newController.initialize();
-      if (mounted) {
-        setState(() {
-          _controller = newController;
-        });
-      }
     } catch (e) {
-      debugPrint('Ошибка инициализации камеры: $e');
+      debugPrint('Ошибка инициализации новой камеры: $e');
+      return;
     }
+
+    // 5. Безопасно уничтожаем СТАРЫЙ контроллер
+    final oldController = _controller;
+    _controller = newController;
+
+    if (mounted) {
+      setState(() {});
+    }
+
+    await oldController?.dispose();
+
+    // 6. Если стрим был активен — возобновляем его на НОВОЙ камере
+    if (wasStreaming && _controller != null && _controller!.value.isInitialized) {
+      await _startStreamingProcess();
+    }
+  }
+
+  Future<void> _startStreamingProcess() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_controller!.value.isStreamingImages) return;
+
+    _isStreaming = true;
+
+    await _controller!.startImageStream((CameraImage image) async {
+      if (!_isStreaming) return;
+
+      // Наша нативная конвертация YUV в JPEG
+      final jpegBytes = await _convertYuvToJpeg(image);
+
+      if (jpegBytes.isNotEmpty) {
+        // Обновляем буфер для HTTP-сервера
+        _lastJpegFrame = jpegBytes; 
+      }
+    });
   }
 
   Future<bool> _checkUsbDebugging() async {
@@ -107,7 +147,17 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _toggleStream() async {
-    if (_isStreaming) {
+    bool usbDebug = await _checkUsbDebugging();
+    if (!usbDebug) {
+      await showDialog(
+        context: context, 
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text("USB-debugging is not available"),
+            content: const Text("You need to enable USB-debugging to allow stream forward"),
+          );
+        });
+    } else if (_isStreaming) {
       await _stopStream();
     } else {
       await _startStream();
@@ -220,7 +270,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// Утилита упаковки плоскостей Y, U, V в байтовый массив NV21
   Uint8List _yuv420ToNv21(CameraImage image) {
     final int width = image.width;
     final int height = image.height;
