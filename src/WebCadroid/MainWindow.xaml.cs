@@ -8,6 +8,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
+using WebCadroid.Services;
 using WebCadroid.Types;
 
 namespace WebCadroid;
@@ -16,24 +18,66 @@ namespace WebCadroid;
 /// Interaction logic for MainWindow.xaml
 /// </summary>
 public partial class MainWindow : Window {
-    public MainWindow()
-    {
+    private readonly AdbService _adbService;
+    private readonly DispatcherTimer _refreshTimer;
+    private bool _isLoading = false;
+
+    public MainWindow() {
         InitializeComponent();
 
-        var devices = new List<DeviceModel>
+        _adbService = new AdbService();
+        _refreshTimer = new DispatcherTimer
         {
-            new DeviceModel { DeviceName = "Pixel 6 Pro", DeviceId = "192.168.1.45:5555" },
-            new DeviceModel { DeviceName = "Samsung Galaxy S22", DeviceId = "adb-device-001" },
-            new DeviceModel { DeviceName = "Xiaomi Mi 11", DeviceId = "adb-device-002" },
-            new DeviceModel { DeviceName = "Pixel 6 Pro", DeviceId = "192.168.1.45:5555" },
-            new DeviceModel { DeviceName = "Samsung Galaxy S22", DeviceId = "adb-device-001" },
-            new DeviceModel { DeviceName = "Xiaomi Mi 11", DeviceId = "adb-device-002" },
-            new DeviceModel { DeviceName = "Pixel 6 Pro", DeviceId = "192.168.1.45:5555" },
-            new DeviceModel { DeviceName = "Samsung Galaxy S22", DeviceId = "adb-device-001" },
-            new DeviceModel { DeviceName = "Xiaomi Mi 11", DeviceId = "adb-device-002" },
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _refreshTimer.Tick += async (s, e) => LoadDevicesAsync();
+
+        Loaded += (s, e) =>
+        {
+            LoadDevicesAsync();
+            _refreshTimer.Start();
         };
 
-        DevicesDataGrid.ItemsSource = devices;
+        Unloaded += (s, e) => _refreshTimer.Stop();
+        LoadDevicesAsync();
+    }
+
+    private async void LoadDevicesAsync() {
+        if (_isLoading) return;
+
+        try
+        {
+            _isLoading = true;
+
+            var newDevices = await _adbService.GetConnectedDevicesAsync();
+
+            var currentDevices = DevicesDataGrid.ItemsSource as List<DeviceModel>;
+            
+            if (currentDevices == null || !AreDeviceListsEqual(currentDevices, newDevices))
+            {
+                DevicesDataGrid.ItemsSource = newDevices;
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool AreDeviceListsEqual(List<DeviceModel> list1, List<DeviceModel> list2)
+    {
+        if (list1.Count != list2.Count) return false;
+        
+        for (int i = 0; i < list1.Count; i++)
+        {
+            if (list1[i].DeviceId != list2[i].DeviceId || 
+                list1[i].DeviceName != list2[i].DeviceName)
+            {
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     /// <summary>
@@ -41,8 +85,7 @@ public partial class MainWindow : Window {
     /// </summary>
     /// <param name="sender"></param>
     /// <param name="e"></param>
-    private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
-    {
+    private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e) {
         if (e.ChangedButton == MouseButton.Left)
         {
             this.DragMove();
@@ -54,8 +97,7 @@ public partial class MainWindow : Window {
     /// </summary>
     /// <param name="sender"></param>
     /// <param name="e"></param>
-    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
-    {
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) {
         this.WindowState = WindowState.Minimized;
     }
 
@@ -64,8 +106,7 @@ public partial class MainWindow : Window {
     /// </summary>
     /// <param name="sender"></param>
     /// <param name="e"></param>
-    private void CloseButton_Click(object sender, RoutedEventArgs e)
-    {
+    private void CloseButton_Click(object sender, RoutedEventArgs e) {
         this.Close();
     }
 
