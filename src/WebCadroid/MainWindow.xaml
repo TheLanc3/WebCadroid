@@ -20,8 +20,10 @@
       <Grid.RowDefinitions>
         <!-- Top bar -->
         <RowDefinition Height="50" />
-        <!-- Main content -->
+        <!-- Main content (Table) -->
         <RowDefinition Height="*" />
+        <!-- Switch Bar -->
+        <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
       <!-- 1. Top bar -->
       <Grid Background="{x:Null}"
@@ -49,37 +51,116 @@
                   Style="{StaticResource CloseBtnStyle}" />
         </StackPanel>
       </Grid>
-      <!-- 2. Main content -->
-      <Grid Margin="20" Grid.Row="1">
-        <Border Width="660"
-                Height="220"
-                Margin="0,0,0,60"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="#FF303030"
-                CornerRadius="18,18,18,18"
-                Grid.Column="0"
-                Grid.Row="0" />
-        <!-- 2.1 Table content -->
-        <Grid>
-          <Grid.RowDefinitions>
-            <!-- Table top bar -->
-            <RowDefinition Height="50" />
-            <!-- Table content -->
-            <RowDefinition Height="*" />
-          </Grid.RowDefinitions>
-        </Grid>
-      </Grid>
-      <!-- 3. Switch button -->
-      <Grid Margin="20" Grid.Row="2">
-        <StackPanel Margin="0,0,10,0"
-                    Orientation="Horizontal"
-                    Grid.Column="1">
-          <Button Content="Devices"
-                  Click="MinimizeButton_Click" />
-          <Button Content="Camera preview"
-                  Click="CloseButton_Click" />
-        </StackPanel>
+      <!-- 2. Main content (DataGrid Table) -->
+      <Border Width="660"
+              Height="220"
+              Margin="0,0,0,0"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Background="#FF303030"
+              CornerRadius="18,18,18,18"
+              Grid.Column="0"
+              Grid.Row="1">
+        <DataGrid x:Name="DevicesDataGrid"
+                  AutoGenerateColumns="False"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  CanUserAddRows="False"
+                  GridLinesVisibility="None"
+                  HeadersVisibility="Column"
+                  IsReadOnly="True"
+                  RowStyle="{StaticResource DeviceRowStyle}"
+                  SelectionMode="Single">
+          <!-- Table title style -->
+          <DataGrid.ColumnHeaderStyle>
+            <Style TargetType="DataGridColumnHeader">
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="Foreground" Value="#888888" />
+              <Setter Property="FontWeight" Value="Bold" />
+              <Setter Property="Padding" Value="15,10" />
+              <Setter Property="BorderThickness" Value="0,0,0,2" />
+              <Setter Property="BorderBrush" Value="#404040" />
+            </Style>
+          </DataGrid.ColumnHeaderStyle>
+          <DataGrid.Columns>
+            <!-- Device Name Column -->
+            <DataGridTextColumn Width="*"
+                                Binding="{Binding DeviceName}"
+                                Header="Device Name" />
+            <!-- Device ID Column -->
+            <DataGridTextColumn Width="150"
+                                Binding="{Binding DeviceId}"
+                                Header="Device ID" />
+            <!-- Action Column (Connect Button on Hover) -->
+            <DataGridTemplateColumn Width="120">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Button x:Name="BtnConnect"
+                          Content="Connect"
+                          Height="24" 
+                          Margin="0,0,5,0"
+                          Click="ConnectButton_Click"
+                          Cursor="Hand"
+                          Visibility="Hidden">
+                    <Button.Style>
+                      <Style TargetType="Button">
+                        <Setter Property="Background" Value="#007ACC" />
+                        <Setter Property="Foreground" Value="White" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="Template">
+                          <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                              <Border Background="{TemplateBinding Background}"
+                                      CornerRadius="14">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                              </Border>
+                            </ControlTemplate>
+                          </Setter.Value>
+                        </Setter>
+                      </Style>
+                    </Button.Style>
+                  </Button>
+                  <!-- Button showing logic -->
+                  <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsMouseOver}"
+                                 Value="True">
+                      <Setter Property="Visibility"
+                              TargetName="BtnConnect"
+                              Value="Visible" />
+                    </DataTrigger>
+                  </DataTemplate.Triggers>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Border>
+      <!-- 3. Switch bar -->
+      <Grid Margin="0,0,0,60"
+            Background="{x:Null}"
+            Focusable="False"
+            Grid.Row="2">
+        <!-- Switch bar layout -->
+        <Border HorizontalAlignment="Center"
+                Background="#181818"
+                BorderBrush="#0A3A60"
+                BorderThickness="1"
+                CornerRadius="18"
+                Padding="3"
+                Grid.Column="1">
+          <StackPanel Orientation="Horizontal">
+            <RadioButton Content="DEVICES"
+                         Checked="SwitchMode_Checked"
+                         GroupName="ModeSwitch"
+                         IsChecked="True"
+                         Style="{StaticResource SegmentedRadioButton}" />
+            <RadioButton Content="CAMERA PREVIEW"
+                         Checked="SwitchMode_Checked"
+                         GroupName="ModeSwitch"
+                         Style="{StaticResource SegmentedRadioButton}" />
+          </StackPanel>
+        </Border>
       </Grid>
     </Grid>
   </Border>
