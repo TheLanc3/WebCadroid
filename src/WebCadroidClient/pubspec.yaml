@@ -35,8 +35,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   camera: ^0.11.0
-  shelf: ^1.4.1
-  shelf_router: ^1.1.4
+  wakelock_plus: ^1.5.1
   image: ^4.1.7
 
 dev_dependencies:

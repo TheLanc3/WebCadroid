@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 void main() {
   runApp(const MyApp());
@@ -159,8 +160,10 @@ class _CameraScreenState extends State<CameraScreen> {
         });
     } else if (_isStreaming) {
       await _stopStream();
+      WakelockPlus.disable();
     } else {
       await _startStream();
+      WakelockPlus.enable();
     }
   }
 
