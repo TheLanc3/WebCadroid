@@ -376,7 +376,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('WebCadroid'),
+        title: Text('WebCadroid', style: TextStyle(fontWeight: FontWeight(750)),),
         centerTitle: true,
       ),
       body: _buildBody(),
@@ -465,7 +465,8 @@ class _CameraScreenState extends State<CameraScreen> {
             ElevatedButton(
               onPressed: _toggleStream,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isStreaming ? Colors.red : Colors.green,
+                backgroundColor: _isStreaming ? const Color.fromARGB(255, 255, 129, 120) : const Color.fromARGB(255, 108, 183, 111),
+                foregroundColor: _isStreaming ? const Color.fromARGB(255, 143, 52, 45) : const Color.fromARGB(255, 51, 128, 53),
               ),
               child: Text(_isStreaming ? 'Stop Stream' : 'Translate to PC'),
             ),

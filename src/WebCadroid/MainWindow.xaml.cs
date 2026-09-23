@@ -37,11 +37,11 @@ public partial class MainWindow : Window {
         {
             Interval = TimeSpan.FromSeconds(2)
         };
-        _refreshTimer.Tick += async (s, e) => LoadDevicesAsync();
+        _refreshTimer.Tick += async (s, e) => await LoadDevicesAsync();
 
-        Loaded += (s, e) =>
+        Loaded += async (s, e) =>
         {
-            LoadDevicesAsync();
+            await LoadDevicesAsync();
             _refreshTimer.Start();
         };
 
@@ -155,16 +155,16 @@ public partial class MainWindow : Window {
 
     private void SwitchMode_Checked(object sender, RoutedEventArgs e)
     {
-        if (DevicesDataGrid == null || PreviewContainer == null) return;
+        if (DevicesGridBody == null || PreviewContainer == null) return;
 
         if (DevicesTabRadio.IsChecked == true)
         {
-            DevicesDataGrid.Visibility = Visibility.Visible;
+            DevicesGridBody.Visibility = Visibility.Visible;
             PreviewContainer.Visibility = Visibility.Collapsed;
         }
         else if (PreviewTabRadio.IsChecked == true)
         {
-            DevicesDataGrid.Visibility = Visibility.Collapsed;
+            DevicesGridBody.Visibility = Visibility.Collapsed;
             PreviewContainer.Visibility = Visibility.Visible;
         }
     }
@@ -183,7 +183,7 @@ public partial class MainWindow : Window {
         Dispatcher.Invoke(() =>
         {
             NoStreamBorder.Visibility = Visibility.Visible;
-            StreamImage.Visibility = Visibility.Collapsed;
+            StreamImageContainer.Visibility = Visibility.Collapsed;
             StreamImage.Source = null;
         });
     }
@@ -212,7 +212,7 @@ public partial class MainWindow : Window {
                 Dispatcher.Invoke(() =>
                 {
                     NoStreamBorder.Visibility = Visibility.Collapsed;
-                    StreamImage.Visibility = Visibility.Visible;
+                    StreamImageContainer.Visibility = Visibility.Visible;
                 });
 
                 using var stream = await response.Content.ReadAsStreamAsync(_streamCts.Token);
