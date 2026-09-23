@@ -4,6 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WebCadroid"
+        xmlns:enums="clr-namespace:WebCadroid.Types.Enums"
         Width="800"
         Height="450"
         AllowsTransparency="True"
@@ -55,6 +56,7 @@
       <Border Width="660"
               Height="220"
               Margin="0,0,0,0"
+              Visibility="Visible"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"
               Background="#FF303030"
@@ -88,14 +90,18 @@
                                 Binding="{Binding DeviceName}"
                                 Header="Device Name" />
             <!-- Device ID Column -->
-            <DataGridTextColumn Width="150"
+            <DataGridTextColumn Width="100"
                                 Binding="{Binding DeviceId}"
                                 Header="Device ID" />
+            <!-- Stream status Column -->
+            <DataGridTextColumn Width="100"
+                                Binding="{Binding Status}"
+                                Header="Stream" />
             <!-- Action Column (Connect Button on Hover) -->
             <DataGridTemplateColumn Width="120">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                  <Button x:Name="BtnConnect"
+                  <Button x:Name="ConnectBtn"
                           Content="Connect"
                           Height="24" 
                           Margin="0,0,5,0"
@@ -104,20 +110,27 @@
                           Visibility="Hidden">
                     <Button.Style>
                       <Style TargetType="Button">
-                        <Setter Property="Background" Value="#007ACC" />
-                        <Setter Property="Foreground" Value="White" />
-                        <Setter Property="BorderThickness" Value="0" />
-                        <Setter Property="Template">
-                          <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                              <Border Background="{TemplateBinding Background}"
-                                      CornerRadius="14">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center" />
-                              </Border>
-                            </ControlTemplate>
-                          </Setter.Value>
-                        </Setter>
+                          <!-- По дефолту (NotOpened) -->
+                          <Setter Property="Content" Value="Connect"/>
+                          <Setter Property="Background" Value="#6c757d"/>
+                          <Setter Property="Foreground" Value="White"/>
+                          <Setter Property="IsEnabled" Value="False"/>
+
+                          <Style.Triggers>
+                              <!-- Доступен для подключения (Available) -->
+                              <DataTrigger Binding="{Binding Status}" Value="{x:Static enums:StreamStatus.Available}">
+                                  <Setter Property="Content" Value="Connect"/>
+                                  <Setter Property="Background" Value="#28a745"/> <!-- Зеленый -->
+                                  <Setter Property="IsEnabled" Value="True"/>
+                              </DataTrigger>
+
+                              <!-- Активен (Streaming) -->
+                              <DataTrigger Binding="{Binding Status}" Value="{x:Static enums:StreamStatus.Streaming}">
+                                  <Setter Property="Content" Value="Disconnect"/>
+                                  <Setter Property="Background" Value="#dc3545"/> <!-- Красный -->
+                                  <Setter Property="IsEnabled" Value="True"/>
+                              </DataTrigger>
+                          </Style.Triggers>
                       </Style>
                     </Button.Style>
                   </Button>
@@ -126,7 +139,7 @@
                     <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsMouseOver}"
                                  Value="True">
                       <Setter Property="Visibility"
-                              TargetName="BtnConnect"
+                              TargetName="ConnectBtn"
                               Value="Visible" />
                     </DataTrigger>
                   </DataTemplate.Triggers>
@@ -136,6 +149,18 @@
           </DataGrid.Columns>
         </DataGrid>
       </Border>
+
+      <Grid x:Name="PreviewContainer"
+            Visibility="Collapsed"
+            Grid.Row="1">
+                
+        <Border x:Name="NoStreamBorder" Background="#2D2D30" CornerRadius="16" Visibility="Visible">
+            <TextBlock Text="Stream is not opened" Foreground="Gray" 
+                        FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+
+        <Image x:Name="StreamImage" Stretch="Uniform" Visibility="Collapsed"/>
+      </Grid>
       <!-- 3. Switch bar -->
       <Grid Margin="0,0,0,60"
             Background="{x:Null}"
@@ -150,12 +175,14 @@
                 Padding="3"
                 Grid.Column="1">
           <StackPanel Orientation="Horizontal">
-            <RadioButton Content="DEVICES"
+            <RadioButton x:Name="DevicesTabRadio"
+                         Content="DEVICES"
                          Checked="SwitchMode_Checked"
                          GroupName="ModeSwitch"
                          IsChecked="True"
                          Style="{StaticResource SegmentedRadioButton}" />
-            <RadioButton Content="CAMERA PREVIEW"
+            <RadioButton x:Name="PreviewTabRadio"
+                         Content="CAMERA PREVIEW"
                          Checked="SwitchMode_Checked"
                          GroupName="ModeSwitch"
                          Style="{StaticResource SegmentedRadioButton}" />
