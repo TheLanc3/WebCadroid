@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; 
 
 void main() {
   runApp(const MyApp());
@@ -11,111 +16,412 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const CameraScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class CameraScreen extends StatefulWidget {
+  const CameraScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _CameraScreenState extends State<CameraScreen> {
+  static const _platform = MethodChannel('com.example.webcadroidclient/settings');
+  
+  List<CameraDescription> _cameras = [];
+  CameraController? _controller;
+  int _selectedCameraIndex = 0;
+  bool _isInitializing = true;
 
-  void _incrementCounter() {
+  HttpServer? _server;
+
+  bool _isStreaming = false;
+
+  int _targetFps = 30;
+  int _port = 8080;
+
+  final TextEditingController _portController = TextEditingController(text: "8080");
+
+  List<int>? _lastJpegFrame;
+  bool _isProcessingFrame = false;
+  DateTime _lastFrameTime = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _initCameras();
+  }
+
+  Future<void> _initCameras() async {
+    try {
+      _cameras = await availableCameras();
+      if (_cameras.isNotEmpty) {
+        await _initCameraController(_cameras[_selectedCameraIndex]);
+      }
+    } catch (e) {
+      debugPrint('Ошибка получения камер: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isInitializing = false);
+      }
+    }
+  }
+
+  Future<void> _initCameraController(CameraDescription cameraDescription) async {
+    final previousController = _controller;
+    
+    final newController = CameraController(
+      cameraDescription,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
+
+    await previousController?.dispose();
+
+    try {
+      await newController.initialize();
+      if (mounted) {
+        setState(() {
+          _controller = newController;
+        });
+      }
+    } catch (e) {
+      debugPrint('Ошибка инициализации камеры: $e');
+    }
+  }
+
+  Future<bool> _checkUsbDebugging() async {
+    try {
+      final bool isAdbEnabled = await _platform.invokeMethod('isUsbDebuggingEnabled');
+      return isAdbEnabled;
+    } on PlatformException catch (e) {
+      debugPrint("Failed to check USB-debugging: ${e.message}");
+      return false;
+    }
+  }
+
+  Future<void> _toggleStream() async {
+    if (_isStreaming) {
+      await _stopStream();
+    } else {
+      await _startStream();
+    }
+  }
+
+  Future<void> _startStream() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    try {
+      // 1. Читаем порт из поля ввода
+      _port = int.tryParse(_portController.text) ?? 8080;
+
+      // 2. Запускаем HttpServer на всех сетевых интерфейсах (0.0.0.0)
+      _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
+      _listenHttpRequests();
+
+      // 3. Подписываемся на поток кадров с камеры с учетом FPS
+      final frameIntervalMs = (1000 / _targetFps).round();
+
+      await _controller!.startImageStream((CameraImage image) async {
+        final now = DateTime.now();
+        if (now.difference(_lastFrameTime).inMilliseconds < frameIntervalMs) {
+          return; // Пропускаем кадры для ограничения FPS
+        }
+        if (_isProcessingFrame) return;
+
+        _isProcessingFrame = true;
+        _lastFrameTime = now;
+
+        try {
+          // Преобразование YUV420/NV21 в JPEG (используйте ваш существующий конвертер/пакет)
+          _lastJpegFrame = await _convertYuvToJpeg(image); 
+        } finally {
+          _isProcessingFrame = false;
+        }
+      });
+
+      setState(() {
+        _isStreaming = true;
+      });
+    } catch (e) {
+      debugPrint("Error starting server: $e");
+    }
+  }
+
+  Future<void> _stopStream() async {
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      await _controller!.stopImageStream();
+    }
+    await _server?.close(force: true);
+    _server = null;
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isStreaming = false;
     });
+  }
+
+  void _listenHttpRequests() {
+    _server?.listen((HttpRequest request) async {
+      if (request.uri.path == '/stream') {
+        // Устанавливаем заголовок MJPEG
+        request.response.headers.contentType =
+            ContentType.parse('multipart/x-mixed-replace; boundary=--frame');
+
+        while (_isStreaming) {
+          if (_lastJpegFrame != null) {
+            try {
+              request.response.write('--frame\r\n');
+              request.response.write('Content-Type: image/jpeg\r\n');
+              request.response.write('Content-Length: ${_lastJpegFrame!.length}\r\n\r\n');
+              request.response.add(_lastJpegFrame!);
+              request.response.write('\r\n');
+              await request.response.flush();
+            } catch (_) {
+              // Клиент отключился
+              break;
+            }
+          }
+          await Future.delayed(Duration(milliseconds: (1000 / _targetFps).round()));
+        }
+        await request.response.close();
+      } else {
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      }
+    });
+  }
+
+  Future<List<int>> _convertYuvToJpeg(CameraImage image) async {
+    try {
+      // 1. Преобразуем плоскости YUV420 в формат NV21, подходящий для YuvImage в Android
+      final Uint8List nv21Bytes = _yuv420ToNv21(image);
+
+      // 2. Вызываем нативный Kotlin-метод
+      final Uint8List? jpegBytes = await _platform.invokeMethod<Uint8List>(
+        'convertYuvToJpeg',
+        {
+          'nv21': nv21Bytes,
+          'width': image.width,
+          'height': image.height,
+          'quality': 70, // Качество сжатия от 1 до 100
+        },
+      );
+
+      return jpegBytes ?? [];
+    } on PlatformException catch (e) {
+      debugPrint("Native conversion error: ${e.message}");
+      return [];
+    }
+  }
+
+  /// Утилита упаковки плоскостей Y, U, V в байтовый массив NV21
+  Uint8List _yuv420ToNv21(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+    
+    final Plane yPlane = image.planes[0];
+    final Plane uPlane = image.planes[1];
+    final Plane vPlane = image.planes[2];
+
+    final int ySize = width * height;
+    final int uvSize = width * height ~/ 2;
+
+    final Uint8List nv21 = Uint8List(ySize + uvSize);
+
+    // Копируем Y плоскость
+    int id = 0;
+    for (int i = 0; i < height; i++) {
+      for (int j = 0; j < width; j++) {
+        nv21[id++] = yPlane.bytes[i * yPlane.bytesPerRow + j];
+      }
+    }
+
+    // Переплетаем V и U плоскости (NV21 формат: YYYY... VUVU...)
+    final int uvRowStride = uPlane.bytesPerRow;
+    final int uvPixelStride = uPlane.bytesPerPixel ?? 2;
+
+    for (int i = 0; i < height ~/ 2; i++) {
+      for (int j = 0; j < width ~/ 2; j++) {
+        final int uvIndex = i * uvRowStride + j * uvPixelStride;
+        nv21[id++] = vPlane.bytes[uvIndex];
+        nv21[id++] = uPlane.bytes[uvIndex];
+      }
+    }
+
+    return nv21;
+  }
+
+  String _getCameraName(CameraDescription camera) {
+    switch (camera.lensDirection) {
+      case CameraLensDirection.front:
+        return 'Front camera';
+      case CameraLensDirection.back:
+        return 'Rear camera (${camera.name})';
+      case CameraLensDirection.external:
+        return 'External camera';
+    }
+  }
+
+  Future<void> _showCameraSelectionDialog() async {
+    if (_cameras.isEmpty) return;
+
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select camera'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(_cameras.length, (index) {
+                final camera = _cameras[index];
+                final isSelected = index == _selectedCameraIndex;
+
+                return ListTile(
+                  leading: Icon(
+                    camera.lensDirection == CameraLensDirection.front
+                        ? Icons.camera_front
+                        : Icons.camera_rear,
+                    color: isSelected ? Theme.of(context).primaryColor : null,
+                  ),
+                  title: Text(
+                    _getCameraName(camera),
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? Icon(Icons.check, color: Theme.of(context).primaryColor)
+                      : null,
+                  onTap: () async {
+                    Navigator.pop(context); // Закрываем диалог
+                    if (!isSelected) {
+                      setState(() {
+                        _selectedCameraIndex = index;
+                      });
+                      await _initCameraController(camera);
+                    }
+                  },
+                );
+              }),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('WebCadroid'),
+        centerTitle: true,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: _buildBody(),
+    );
+  }
+  
+  Widget _buildBody() {
+    if (_isInitializing) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_cameras.isEmpty || _controller == null || !_controller!.value.isInitialized) {
+      return const Scaffold(
+        body: Center(child: Text('Camera unavaliable')),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Container(
+              height: 400, // Ограничение высоты контейнера
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  height: 350,
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _controller!.value.previewSize!.height,
+                      height: _controller!.value.previewSize!.width,
+                      child: CameraPreview(_controller!),
+                    ),
+                  ),
+                ),
+              )
+            ),
+            const SizedBox(height: 20),
+
+            ElevatedButton.icon(
+              onPressed: _cameras.length > 1 ? _showCameraSelectionDialog : null,
+              icon: const Icon(Icons.switch_camera),
+              label: const Text('Change camera'),
+            ),
+
+            TextField(
+              controller: _portController,
+              enabled: !_isStreaming,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Port',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Слайдер FPS (15..60)
+            Text('Target FPS: $_targetFps'),
+            Slider(
+              value: _targetFps.toDouble(),
+              min: 15,
+              max: 60,
+              divisions: 9, // Шаг 5 (15, 20, 25... 60)
+              label: '$_targetFps FPS',
+              onChanged: _isStreaming
+                  ? null
+                  : (val) {
+                      setState(() {
+                        _targetFps = val.round();
+                      });
+                    },
+            ),
+            const SizedBox(height: 16),
+
+            // Кнопка переключения трансляции
+            ElevatedButton(
+              onPressed: _toggleStream,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isStreaming ? Colors.red : Colors.green,
+              ),
+              child: Text(_isStreaming ? 'Stop Stream' : 'Translate to PC'),
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
       ),
     );
   }
