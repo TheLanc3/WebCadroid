@@ -257,8 +257,8 @@ class _CameraScreenState extends State<CameraScreen> {
         'convertYuvToJpeg',
         {
           'nv21': nv21Bytes,
-          'width': image.width,
-          'height': image.height,
+          'width': 1280,
+          'height': 720,
           'quality': 70, // Качество сжатия от 1 до 100
         },
       );

@@ -1,4 +1,6 @@
-﻿using System.IO;
+﻿using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Windows;
@@ -22,6 +24,7 @@ namespace WebCadroid;
 /// </summary>
 public partial class MainWindow : Window {
     private readonly AdbService _adbService;
+    private readonly IVirtualCamService _virtualCamService;
     private readonly DispatcherTimer _refreshTimer;
     private bool _isLoading = false;
 
@@ -33,6 +36,9 @@ public partial class MainWindow : Window {
         InitializeComponent();
 
         _adbService = new AdbService();
+        _virtualCamService = new VirtualCamService();
+        _virtualCamService.Initialize();
+
         _refreshTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(2)
@@ -168,6 +174,11 @@ public partial class MainWindow : Window {
             PreviewContainer.Visibility = Visibility.Visible;
         }
     }
+    protected override void OnClosed(EventArgs e)
+    {
+        _virtualCamService.Dispose();
+        base.OnClosed(e);
+    }
 
     private void StopStream()
     {
@@ -254,6 +265,7 @@ public partial class MainWindow : Window {
                                 
                                 // Создаем копию байтов кадра для WPF
                                 byte[] imageBytes = frameBuffer.ToArray();
+                                _virtualCamService.SendFrame(imageBytes);
 
                                 _ = Dispatcher.BeginInvoke(new Action(() =>
                                 {
@@ -282,58 +294,5 @@ public partial class MainWindow : Window {
                 ShowNoStreamUI();
             }
         }, _streamCts.Token);
-    }
-
-    /// <summary>
-    /// Асинхронный парсинг JPEG с помощью ReadAsync (не блокирует поток)
-    /// </summary>
-    private async Task<MemoryStream> ReadJpegFrameAsync(Stream stream, CancellationToken token)
-    {
-        var ms = new MemoryStream();
-        byte[] buffer = new byte[1]; // Побайтовое асинхронное чтение
-        int prevByte = -1;
-        bool frameStarted = false;
-
-        while (!token.IsCancellationRequested)
-        {
-            int bytesRead = await stream.ReadAsync(buffer, 0, 1, token);
-            if (bytesRead == 0) break;
-
-            int currentByte = buffer[0];
-
-            if (!frameStarted)
-            {
-                // Начало JPEG: 0xFF, 0xD8
-                if (prevByte == 0xFF && currentByte == 0xD8)
-                {
-                    frameStarted = true;
-                    ms.WriteByte(0xFF);
-                    ms.WriteByte(0xD8);
-                }
-            }
-            else
-            {
-                ms.WriteByte((byte)currentByte);
-
-                // Конец JPEG: 0xFF, 0xD9
-                if (prevByte == 0xFF && currentByte == 0xD9)
-                {
-                    ms.Position = 0;
-                    return ms;
-                }
-            }
-            prevByte = currentByte;
-        }
-
-        return null!;
-    }
-    private void ShowNoStreamState()
-    {
-        Dispatcher.Invoke(() =>
-        {
-            NoStreamBorder.Visibility = Visibility.Visible;
-            StreamImage.Visibility = Visibility.Collapsed;
-            StreamImage.Source = null;
-        });
     }
 }
