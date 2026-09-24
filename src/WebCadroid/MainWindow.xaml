@@ -189,12 +189,16 @@
               <Image x:Name="StreamImage"
                     Stretch="UniformToFill"
                     HorizontalAlignment="Stretch"
-                    VerticalAlignment="Stretch">
+                    VerticalAlignment="Stretch"
+                    RenderTransformOrigin="0.5,0.5">
                 <Image.Clip>
                     <RectangleGeometry Rect="0,0,495,277" 
                                       RadiusX="16" 
                                       RadiusY="16" />
                 </Image.Clip>
+                <Image.RenderTransform>
+                  <ScaleTransform ScaleY="-1" />
+                </Image.RenderTransform>
               </Image>
               <Border x:Name="PreviewPausedOverlay"
                       Background="#D9181818"
