@@ -1,25 +1,46 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:webcadroidclient/services/frame_converter.dart';
+import 'package:webcadroidclient/services/streaming_server.dart';
+import 'package:webcadroidclient/widgets/camera_preview_card.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      theme: ThemeData(
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+    // Pure night theme for minimal OLED/AMOLED power consumption during wakelock
+    final darkTheme = ThemeData.dark(useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: Colors.black,
+      colorScheme: const ColorScheme.dark(
+        primary: Colors.deepPurpleAccent,
+        secondary: Colors.tealAccent,
+        surface: Color(0xFF141414),
+        surfaceContainerHighest: Color(0xFF222222),
       ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      cardTheme: const CardThemeData(
+        color: Color(0xFF141414),
+      ),
+    );
+
+    return MaterialApp(
+      title: 'WebCadroid',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      theme: darkTheme,
+      darkTheme: darkTheme,
       home: const CameraScreen(),
     );
   }
@@ -32,31 +53,56 @@ class CameraScreen extends StatefulWidget {
   State<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
-  static const _platform = MethodChannel('com.example.webcadroidclient/settings');
-  
+class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver {
+  final StreamingServer _streamingServer = StreamingServer();
+  final TextEditingController _portController = TextEditingController(text: "8080");
+
   List<CameraDescription> _cameras = [];
   CameraController? _controller;
   int _selectedCameraIndex = 0;
+
   bool _isInitializing = true;
-
-  HttpServer? _server;
-
+  bool _isChangingCamera = false;
   bool _isStreaming = false;
+  bool _isPreviewPaused = false;
+  double? _previousBrightness;
 
   int _targetFps = 30;
-  int _port = 8080;
-
-  final TextEditingController _portController = TextEditingController(text: "8080");
-
-  List<int>? _lastJpegFrame;
   bool _isProcessingFrame = false;
   DateTime _lastFrameTime = DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initCameras();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopStream();
+    _controller?.dispose();
+    _portController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final cameraController = _controller;
+    if (cameraController == null || !cameraController.value.isInitialized) {
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      // App minimized: stop stream if active
+      if (_isStreaming) {
+        _stopStream();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // Re-initialize camera on resume if needed
+      _initCameraController(_cameras[_selectedCameraIndex]);
+    }
   }
 
   Future<void> _initCameras() async {
@@ -66,7 +112,7 @@ class _CameraScreenState extends State<CameraScreen> {
         await _initCameraController(_cameras[_selectedCameraIndex]);
       }
     } catch (e) {
-      debugPrint('Ошибка получения камер: $e');
+      debugPrint('[CameraScreen] Error getting cameras: $e');
     } finally {
       if (mounted) {
         setState(() => _isInitializing = false);
@@ -74,249 +120,246 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  /// Safely disposes the old camera controller and initializes the new camera controller.
   Future<void> _initCameraController(CameraDescription cameraDescription) async {
-    final bool wasStreaming = _isStreaming;
+    if (_isChangingCamera) return;
+    _isChangingCamera = true;
 
-    // 2. Если стрим активен, останавливаем получение кадров со старой камеры
+    final bool wasStreaming = _isStreaming;
+    final bool wasPreviewPaused = _isPreviewPaused;
+
+    // 1. If currently streaming, stop image stream from old controller
     if (_controller != null && _controller!.value.isStreamingImages) {
       try {
         await _controller!.stopImageStream();
       } catch (e) {
-        debugPrint('Ошибка при остановке ImageStream: $e');
+        debugPrint('[CameraScreen] Error stopping image stream: $e');
       }
     }
 
-    // 3. Создаем новый контроллер
+    // 2. Safely dispose the old controller FIRST before allocating the new one
+    // On Android Camera2 HAL, two cameras cannot be held open concurrently
+    if (_controller != null) {
+      final oldController = _controller;
+      _controller = null;
+      if (mounted) setState(() {});
+      await oldController?.dispose();
+    }
+
+    // 3. Create and initialize new controller
     final newController = CameraController(
       cameraDescription,
       ResolutionPreset.high,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420, // Явно задаем YUV420 для Android
+      imageFormatGroup: ImageFormatGroup.yuv420,
     );
 
-    // 4. Инициализируем НОВЫЙ контроллер, пока старый еще существует в памяти
     try {
       await newController.initialize();
+      if (!mounted) {
+        await newController.dispose();
+        return;
+      }
+
+      setState(() {
+        _controller = newController;
+        _isChangingCamera = false;
+      });
+
+      // 4. Restore streaming state if stream was active
+      if (wasStreaming) {
+        await _startCameraImageStream();
+        if (wasPreviewPaused) {
+          await _pausePreview();
+        }
+      }
     } catch (e) {
-      debugPrint('Ошибка инициализации новой камеры: $e');
-      return;
-    }
-
-    // 5. Безопасно уничтожаем СТАРЫЙ контроллер
-    final oldController = _controller;
-    _controller = newController;
-
-    if (mounted) {
-      setState(() {});
-    }
-
-    await oldController?.dispose();
-
-    // 6. Если стрим был активен — возобновляем его на НОВОЙ камере
-    if (wasStreaming && _controller != null && _controller!.value.isInitialized) {
-      await _startStreamingProcess();
+      debugPrint('[CameraScreen] Error initializing new camera: $e');
+      if (mounted) {
+        setState(() => _isChangingCamera = false);
+      }
     }
   }
 
-  Future<void> _startStreamingProcess() async {
+  Future<void> _startCameraImageStream() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_controller!.value.isStreamingImages) return;
 
-    _isStreaming = true;
+    final frameIntervalMs = (1000 / _targetFps).round();
 
     await _controller!.startImageStream((CameraImage image) async {
       if (!_isStreaming) return;
 
-      // Наша нативная конвертация YUV в JPEG
-      final jpegBytes = await _convertYuvToJpeg(image);
+      // Skip image processing if no WebSocket clients are listening to conserve battery and CPU
+      if (!_streamingServer.hasClients) return;
 
-      if (jpegBytes.isNotEmpty) {
-        // Обновляем буфер для HTTP-сервера
-        _lastJpegFrame = jpegBytes; 
+      final now = DateTime.now();
+      if (now.difference(_lastFrameTime).inMilliseconds < frameIntervalMs) {
+        return; // FPS limiting
+      }
+
+      if (_isProcessingFrame) return; // Drop frame if previous is still compressing
+      _isProcessingFrame = true;
+      _lastFrameTime = now;
+
+      try {
+        final jpegBytes = await FrameConverter.convertYuvToJpeg(image);
+        if (jpegBytes != null && jpegBytes.isNotEmpty) {
+          _streamingServer.broadcastFrame(jpegBytes);
+        }
+      } catch (e) {
+        debugPrint('[CameraScreen] Frame processing error: $e');
+      } finally {
+        _isProcessingFrame = false;
       }
     });
   }
 
-  Future<bool> _checkUsbDebugging() async {
-    try {
-      final bool isAdbEnabled = await _platform.invokeMethod('isUsbDebuggingEnabled');
-      return isAdbEnabled;
-    } on PlatformException catch (e) {
-      debugPrint("Failed to check USB-debugging: ${e.message}");
-      return false;
+  Future<void> _pausePreview() async {
+    if (_controller != null && _controller!.value.isInitialized) {
+      try {
+        await _controller!.pausePreview();
+      } catch (e) {
+        debugPrint('[CameraScreen] Error pausing preview: $e');
+      }
+    }
+    if (mounted) {
+      setState(() => _isPreviewPaused = true);
+    }
+  }
+
+  Future<void> _resumePreview() async {
+    if (_controller != null && _controller!.value.isInitialized) {
+      try {
+        await _controller!.resumePreview();
+      } catch (e) {
+        debugPrint('[CameraScreen] Error resuming preview: $e');
+      }
+    }
+    if (mounted) {
+      setState(() => _isPreviewPaused = false);
+    }
+  }
+
+  Future<void> _togglePreviewPause() async {
+    if (_isPreviewPaused) {
+      await _resumePreview();
+    } else {
+      await _pausePreview();
     }
   }
 
   Future<void> _toggleStream() async {
-    bool usbDebug = await _checkUsbDebugging();
+    final bool usbDebug = await FrameConverter.isUsbDebuggingEnabled();
+    if (!mounted) return;
+
     if (!usbDebug) {
       await showDialog(
-        context: context, 
-        builder: (BuildContext context) {
+        context: context,
+        builder: (BuildContext dialogContext) {
           return AlertDialog(
-            title: const Text("USB-debugging is not available"),
-            content: const Text("You need to enable USB-debugging to allow stream forward"),
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: const Text('USB Debugging Required', style: TextStyle(color: Colors.white)),
+            content: const Text(
+              'Please enable USB debugging in Developer Options on your device to forward video to your PC.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('OK', style: TextStyle(color: Colors.deepPurpleAccent)),
+              ),
+            ],
           );
-        });
-    } else if (_isStreaming) {
+        },
+      );
+      return;
+    }
+
+    if (_isStreaming) {
       await _stopStream();
-      WakelockPlus.disable();
     } else {
       await _startStream();
-      WakelockPlus.enable();
     }
   }
 
   Future<void> _startStream() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
 
+    final port = int.tryParse(_portController.text) ?? 8080;
+
     try {
-      // 1. Читаем порт из поля ввода
-      _port = int.tryParse(_portController.text) ?? 8080;
+      await _streamingServer.start(port);
+      _isStreaming = true;
 
-      // 2. Запускаем HttpServer на всех сетевых интерфейсах (0.0.0.0)
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
-      _listenHttpRequests();
+      // Save previous screen brightness and reduce to 10% (0.1) for energy savings
+      _previousBrightness = await FrameConverter.getScreenBrightness();
+      await FrameConverter.setScreenBrightness(0.1);
 
-      // 3. Подписываемся на поток кадров с камеры с учетом FPS
-      final frameIntervalMs = (1000 / _targetFps).round();
+      // Start camera image processing
+      await _startCameraImageStream();
 
-      await _controller!.startImageStream((CameraImage image) async {
-        final now = DateTime.now();
-        if (now.difference(_lastFrameTime).inMilliseconds < frameIntervalMs) {
-          return; // Пропускаем кадры для ограничения FPS
-        }
-        if (_isProcessingFrame) return;
+      // Pause preview automatically to save battery on OLED screens
+      await _pausePreview();
 
-        _isProcessingFrame = true;
-        _lastFrameTime = now;
+      // Keep screen awake while streaming
+      await WakelockPlus.enable();
 
-        try {
-          // Преобразование YUV420/NV21 в JPEG (используйте ваш существующий конвертер/пакет)
-          _lastJpegFrame = await _convertYuvToJpeg(image); 
-        } finally {
-          _isProcessingFrame = false;
-        }
-      });
-
-      setState(() {
-        _isStreaming = true;
-      });
+      if (mounted) setState(() {});
     } catch (e) {
-      debugPrint("Error starting server: $e");
+      debugPrint('[CameraScreen] Error starting stream: $e');
+      _isStreaming = false;
+
+      // Restore brightness if failed
+      if (_previousBrightness != null) {
+        await FrameConverter.setScreenBrightness(_previousBrightness!);
+        _previousBrightness = null;
+      } else {
+        await FrameConverter.resetScreenBrightness();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start server: $e')),
+        );
+      }
     }
   }
 
   Future<void> _stopStream() async {
+    _isStreaming = false;
+
     if (_controller != null && _controller!.value.isStreamingImages) {
-      await _controller!.stopImageStream();
-    }
-    await _server?.close(force: true);
-    _server = null;
-
-    setState(() {
-      _isStreaming = false;
-    });
-  }
-
-  void _listenHttpRequests() {
-    _server?.listen((HttpRequest request) async {
-      if (request.uri.path == '/stream') {
-        // Устанавливаем заголовок MJPEG
-        request.response.headers.contentType =
-            ContentType.parse('multipart/x-mixed-replace; boundary=--frame');
-
-        while (_isStreaming) {
-          if (_lastJpegFrame != null) {
-            try {
-              request.response.write('--frame\r\n');
-              request.response.write('Content-Type: image/jpeg\r\n');
-              request.response.write('Content-Length: ${_lastJpegFrame!.length}\r\n\r\n');
-              request.response.add(_lastJpegFrame!);
-              request.response.write('\r\n');
-              await request.response.flush();
-            } catch (_) {
-              // Клиент отключился
-              break;
-            }
-          }
-          await Future.delayed(Duration(milliseconds: (1000 / _targetFps).round()));
-        }
-        await request.response.close();
-      } else {
-        request.response.statusCode = HttpStatus.notFound;
-        await request.response.close();
-      }
-    });
-  }
-
-  Future<List<int>> _convertYuvToJpeg(CameraImage image) async {
-    try {
-      // 1. Преобразуем плоскости YUV420 в формат NV21, подходящий для YuvImage в Android
-      final Uint8List nv21Bytes = _yuv420ToNv21(image);
-
-      // 2. Вызываем нативный Kotlin-метод
-      final Uint8List? jpegBytes = await _platform.invokeMethod<Uint8List>(
-        'convertYuvToJpeg',
-        {
-          'nv21': nv21Bytes,
-          'width': 1280,
-          'height': 720,
-          'quality': 70, // Качество сжатия от 1 до 100
-        },
-      );
-
-      return jpegBytes ?? [];
-    } on PlatformException catch (e) {
-      debugPrint("Native conversion error: ${e.message}");
-      return [];
-    }
-  }
-
-  Uint8List _yuv420ToNv21(CameraImage image) {
-    final int width = image.width;
-    final int height = image.height;
-    
-    final Plane yPlane = image.planes[0];
-    final Plane uPlane = image.planes[1];
-    final Plane vPlane = image.planes[2];
-
-    final int ySize = width * height;
-    final int uvSize = width * height ~/ 2;
-
-    final Uint8List nv21 = Uint8List(ySize + uvSize);
-
-    // Копируем Y плоскость
-    int id = 0;
-    for (int i = 0; i < height; i++) {
-      for (int j = 0; j < width; j++) {
-        nv21[id++] = yPlane.bytes[i * yPlane.bytesPerRow + j];
+      try {
+        await _controller!.stopImageStream();
+      } catch (e) {
+        debugPrint('[CameraScreen] Error stopping image stream: $e');
       }
     }
 
-    // Переплетаем V и U плоскости (NV21 формат: YYYY... VUVU...)
-    final int uvRowStride = uPlane.bytesPerRow;
-    final int uvPixelStride = uPlane.bytesPerPixel ?? 2;
+    await _streamingServer.stop();
+    await WakelockPlus.disable();
+    await _resumePreview();
 
-    for (int i = 0; i < height ~/ 2; i++) {
-      for (int j = 0; j < width ~/ 2; j++) {
-        final int uvIndex = i * uvRowStride + j * uvPixelStride;
-        nv21[id++] = vPlane.bytes[uvIndex];
-        nv21[id++] = uPlane.bytes[uvIndex];
-      }
+    // Reset screen brightness back to previous value or system default
+    if (_previousBrightness != null) {
+      await FrameConverter.setScreenBrightness(_previousBrightness!);
+      _previousBrightness = null;
+    } else {
+      await FrameConverter.resetScreenBrightness();
     }
 
-    return nv21;
+    if (mounted) setState(() {});
   }
 
   String _getCameraName(CameraDescription camera) {
     switch (camera.lensDirection) {
       case CameraLensDirection.front:
-        return 'Front camera';
+        return 'Front Camera';
       case CameraLensDirection.back:
-        return 'Rear camera (${camera.name})';
+        return 'Rear Camera (${camera.name})';
       case CameraLensDirection.external:
-        return 'External camera';
+        return 'External Camera';
     }
   }
 
@@ -325,9 +368,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
     await showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Select camera'),
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text('Select Camera', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -340,20 +384,21 @@ class _CameraScreenState extends State<CameraScreen> {
                     camera.lensDirection == CameraLensDirection.front
                         ? Icons.camera_front
                         : Icons.camera_rear,
-                    color: isSelected ? Theme.of(context).primaryColor : null,
+                    color: isSelected ? Colors.deepPurpleAccent : Colors.white70,
                   ),
                   title: Text(
                     _getCameraName(camera),
                     style: TextStyle(
+                      color: Colors.white,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                   trailing: isSelected
-                      ? Icon(Icons.check, color: Theme.of(context).primaryColor)
+                      ? const Icon(Icons.check, color: Colors.deepPurpleAccent)
                       : null,
                   onTap: () async {
-                    Navigator.pop(context); // Закрываем диалог
-                    if (!isSelected) {
+                    Navigator.pop(dialogContext);
+                    if (!isSelected && mounted) {
                       setState(() {
                         _selectedCameraIndex = index;
                       });
@@ -370,111 +415,158 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('WebCadroid', style: TextStyle(fontWeight: FontWeight(750)),),
-        centerTitle: true,
+        title: const Text(
+          'WebCadroid',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: _buildBody(),
     );
   }
-  
+
   Widget _buildBody() {
     if (_isInitializing) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.deepPurpleAccent),
       );
     }
 
-    if (_cameras.isEmpty || _controller == null || !_controller!.value.isInitialized) {
-      return const Scaffold(
-        body: Center(child: Text('Camera unavaliable')),
+    if (_cameras.isEmpty) {
+      return const Center(
+        child: Text(
+          'No camera available on this device',
+          style: TextStyle(color: Colors.white70, fontSize: 16),
+        ),
       );
     }
+
+    final port = int.tryParse(_portController.text) ?? 8080;
 
     return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Container(
-              height: 400, // Ограничение высоты контейнера
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Camera Preview Card
+          CameraPreviewCard(
+            controller: _controller,
+            isStreaming: _isStreaming,
+            isPreviewPaused: _isPreviewPaused,
+            port: port,
+            clientCount: _streamingServer.clientCount,
+            onTogglePreviewPause: _togglePreviewPause,
+          ),
+          const SizedBox(height: 16),
+
+          // Change Camera Button
+          OutlinedButton.icon(
+            onPressed: (_cameras.length > 1 && !_isChangingCamera)
+                ? _showCameraSelectionDialog
+                : null,
+            icon: const Icon(Icons.switch_camera),
+            label: Text(_isChangingCamera ? 'Switching...' : 'Change Camera'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              side: const BorderSide(color: Colors.white24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Port Input
+          TextField(
+            controller: _portController,
+            enabled: !_isStreaming,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: 'Port',
+              labelStyle: const TextStyle(color: Colors.white70),
+              filled: true,
+              fillColor: const Color(0xFF181818),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Colors.white24),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: SizedBox(
-                  height: 350,
-                  width: double.infinity,
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _controller!.value.previewSize!.height,
-                      height: _controller!.value.previewSize!.width,
-                      child: CameraPreview(_controller!),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Colors.deepPurpleAccent),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Target FPS Slider
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF181818),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Target FPS', style: TextStyle(color: Colors.white70)),
+                    Text(
+                      '$_targetFps FPS',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              )
+                Slider(
+                  value: _targetFps.toDouble(),
+                  min: 15,
+                  max: 60,
+                  divisions: 9,
+                  label: '$_targetFps FPS',
+                  activeColor: Colors.deepPurpleAccent,
+                  inactiveColor: Colors.white24,
+                  onChanged: _isStreaming
+                      ? null
+                      : (val) {
+                          setState(() {
+                            _targetFps = val.round();
+                          });
+                        },
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
+          ),
+          const SizedBox(height: 20),
 
-            ElevatedButton.icon(
-              onPressed: _cameras.length > 1 ? _showCameraSelectionDialog : null,
-              icon: const Icon(Icons.switch_camera),
-              label: const Text('Change camera'),
+          // Stream Toggle Button
+          FilledButton.icon(
+            onPressed: (_controller != null && _controller!.value.isInitialized)
+                ? _toggleStream
+                : null,
+            icon: Icon(_isStreaming ? Icons.stop : Icons.play_arrow),
+            label: Text(
+              _isStreaming ? 'Stop Streaming' : 'Start Streaming to PC',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-
-            TextField(
-              controller: _portController,
-              enabled: !_isStreaming,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Port',
-                border: OutlineInputBorder(),
-              ),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              backgroundColor: _isStreaming ? Colors.redAccent.shade700 : Colors.green.shade700,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            const SizedBox(height: 16),
-
-            // Слайдер FPS (15..60)
-            Text('Target FPS: $_targetFps'),
-            Slider(
-              value: _targetFps.toDouble(),
-              min: 15,
-              max: 60,
-              divisions: 9, // Шаг 5 (15, 20, 25... 60)
-              label: '$_targetFps FPS',
-              onChanged: _isStreaming
-                  ? null
-                  : (val) {
-                      setState(() {
-                        _targetFps = val.round();
-                      });
-                    },
-            ),
-            const SizedBox(height: 16),
-
-            // Кнопка переключения трансляции
-            ElevatedButton(
-              onPressed: _toggleStream,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isStreaming ? const Color.fromARGB(255, 255, 129, 120) : const Color.fromARGB(255, 108, 183, 111),
-                foregroundColor: _isStreaming ? const Color.fromARGB(255, 143, 52, 45) : const Color.fromARGB(255, 51, 128, 53),
-              ),
-              child: Text(_isStreaming ? 'Stop Stream' : 'Translate to PC'),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }

@@ -103,7 +103,6 @@
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
                   <Button x:Name="ConnectBtn"
-                          Content="Connect"
                           Height="24"
                           Margin="0,0,5,0"
                           Click="ConnectButton_Click"
@@ -112,16 +111,27 @@
                     <Button.Style>
                       <Style TargetType="Button">
                         <!-- По дефолту (NotOpened) -->
-                        <Setter Property="Content" Value="Connect" />
+                        <Setter Property="Content" Value="Not opened" />
                         <Setter Property="Background" Value="#6c757d" />
+                        <Setter Property="BorderBrush" Value="#ccc" />
                         <Setter Property="Foreground" Value="White" />
                         <Setter Property="IsEnabled" Value="False" />
+                        <Setter Property="Template">
+                          <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                              <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" >
+                                  <ContentPresenter x:Name="contentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                              </Border>
+                            </ControlTemplate>
+                          </Setter.Value>
+                        </Setter>
                         <Style.Triggers>
                           <!-- Доступен для подключения (Available) -->
                           <DataTrigger Binding="{Binding Status}"
                                        Value="{x:Static enums:StreamStatus.Available}">
                             <Setter Property="Content" Value="Connect" />
                             <Setter Property="Background" Value="#28a745" />
+                            <Setter Property="BorderBrush" Value="#8fc99c" />
                             <!-- Зеленый -->
                             <Setter Property="IsEnabled" Value="True" />
                           </DataTrigger>
@@ -130,6 +140,7 @@
                                        Value="{x:Static enums:StreamStatus.Streaming}">
                             <Setter Property="Content" Value="Disconnect" />
                             <Setter Property="Background" Value="#dc3545" />
+                            <Setter Property="BorderBrush" Value="#d6a9ae" />
                             <!-- Красный -->
                             <Setter Property="IsEnabled" Value="True" />
                           </DataTrigger>
@@ -174,6 +185,7 @@
                   CornerRadius="16"
                   ClipToBounds="True"
                   Visibility="Collapsed">
+            <Grid>
               <Image x:Name="StreamImage"
                     Stretch="UniformToFill"
                     HorizontalAlignment="Stretch"
@@ -184,6 +196,49 @@
                                       RadiusY="16" />
                 </Image.Clip>
               </Image>
+              <Border x:Name="PreviewPausedOverlay"
+                      Background="#D9181818"
+                      CornerRadius="16"
+                      Visibility="Collapsed">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <TextBlock HorizontalAlignment="Center"
+                             FontSize="16"
+                             FontWeight="Bold"
+                             Foreground="White"
+                             Text="Preview Paused" />
+                  <TextBlock HorizontalAlignment="Center"
+                             Margin="0,6,0,0"
+                             FontSize="12"
+                             Foreground="#888888"
+                             Text="Virtual camera continues streaming" />
+                </StackPanel>
+              </Border>
+              <Button x:Name="TogglePreviewBtn"
+                      Content="Pause Preview"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Bottom"
+                      Margin="0,0,12,12"
+                      Padding="10,5"
+                      Cursor="Hand"
+                      Click="TogglePreviewButton_Click">
+                <Button.Style>
+                  <Style TargetType="Button">
+                      <Setter Property="Background" Value="#80000000" />
+                      <Setter Property="BorderBrush" Value="#40ffffff" />
+                      <Setter Property="Foreground" Value="White" />
+                      <Setter Property="Template">
+                        <Setter.Value>
+                          <ControlTemplate TargetType="Button">
+                            <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" >
+                                <ContentPresenter x:Name="contentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            </Border>
+                          </ControlTemplate>
+                        </Setter.Value>
+                      </Setter>
+                  </Style>
+                </Button.Style>
+              </Button>
+            </Grid>
           </Border>
       </Grid>
       <!-- 3. Switch bar -->

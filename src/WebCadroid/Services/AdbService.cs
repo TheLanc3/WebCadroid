@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Net.Http;
+using System.IO;
+using System.Net.WebSockets;
+using System.Threading;
 using System.Threading.Tasks;
 using WebCadroid.Types;
 using WebCadroid.Types.Enums;
@@ -10,8 +13,23 @@ namespace WebCadroid.Services;
 
 public class AdbService 
 {
-    private readonly string _adbPath = "./Utils/adb";
-    private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+    private readonly string _adbPath;
+    private readonly ConcurrentDictionary<string, string> _deviceNameCache = new();
+
+    public AdbService()
+    {
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        string exePath = Path.Combine(baseDir, "Utils", "adb.exe");
+        if (File.Exists(exePath))
+        {
+            _adbPath = exePath;
+        }
+        else
+        {
+            string fallbackPath = Path.Combine(baseDir, "Utils", "adb");
+            _adbPath = File.Exists(fallbackPath) ? fallbackPath : "adb";
+        }
+    }
 
     public async Task<List<DeviceModel>> GetConnectedDevicesAsync()
     {
@@ -45,18 +63,23 @@ public class AdbService
         return devices;
     }
 
-    public async Task<bool> CheckIfDeviceIsStreamingAsync(string deviceId)
+    public async Task<bool> CheckIfDeviceIsStreamingAsync(string deviceId, int port = 8080)
     {
         try
         {
-            await SetupForwardPortAsync(deviceId, 8080, 8080);
+            await SetupForwardPortAsync(deviceId, port, port);
 
-            using var request = new HttpRequestMessage(HttpMethod.Head, "http://127.0.0.1:8080/stream");
+            using var ws = new ClientWebSocket();
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
             
-            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-            
-            return response.IsSuccessStatusCode;
+            await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}"), cts.Token);
+            bool isConnected = ws.State == WebSocketState.Open;
+
+            if (isConnected)
+            {
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Ping", CancellationToken.None);
+            }
+            return isConnected;
         }
         catch
         {
@@ -71,6 +94,11 @@ public class AdbService
 
     private async Task<string> GetDeviceNameAsync(string deviceId)
     {
+        if (_deviceNameCache.TryGetValue(deviceId, out var cachedName))
+        {
+            return cachedName;
+        }
+
         string model = await ExecuteAdbCommandAsync($"-s {deviceId} shell getprop ro.product.model");
         model = model.Trim();
 
@@ -80,41 +108,41 @@ public class AdbService
         string brand = await ExecuteAdbCommandAsync($"-s {deviceId} shell getprop ro.product.brand");
         brand = brand.Trim();
 
+        string fullName = model;
         if (!string.IsNullOrEmpty(brand))
         {
             brand = char.ToUpper(brand[0]) + brand.Substring(1);
-            return $"{brand} {model}";
+            fullName = $"{brand} {model}";
         }
 
-        return model;
+        _deviceNameCache[deviceId] = fullName;
+        return fullName;
     }
 
-    private Task<string> ExecuteAdbCommandAsync(string arguments)
+    private async Task<string> ExecuteAdbCommandAsync(string arguments)
     {
-        return Task.Run(() =>
+        try
         {
-            try
+            var psi = new ProcessStartInfo
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = _adbPath,
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
+                FileName = _adbPath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
 
-                using var process = Process.Start(psi);
-                if (process == null) return string.Empty;
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit();
-                return output;
-            }
-            catch
-            {
-                return string.Empty;
-            }
-        });
+            using var process = Process.Start(psi);
+            if (process == null) return string.Empty;
+
+            string output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return output;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 }
