@@ -40,7 +40,7 @@
                    FontSize="16"
                    FontWeight="Bold"
                    Foreground="White"
-                   Text="Web Cadroid" />
+                   Text="WebCadroid" />
         <StackPanel Margin="0,0,10,0"
                     Orientation="Horizontal"
                     Grid.Column="1">
@@ -119,7 +119,7 @@
                         <Setter Property="Template">
                           <Setter.Value>
                             <ControlTemplate TargetType="Button">
-                              <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" >
+                              <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="2" >
                                   <ContentPresenter x:Name="contentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                               </Border>
                             </ControlTemplate>
@@ -130,8 +130,8 @@
                           <DataTrigger Binding="{Binding Status}"
                                        Value="{x:Static enums:StreamStatus.Available}">
                             <Setter Property="Content" Value="Connect" />
-                            <Setter Property="Background" Value="#28a745" />
-                            <Setter Property="BorderBrush" Value="#8fc99c" />
+                            <Setter Property="Background" Value="#00bfa5" />
+                            <Setter Property="BorderBrush" Value="#87c7be" />
                             <!-- Зеленый -->
                             <Setter Property="IsEnabled" Value="True" />
                           </DataTrigger>
@@ -139,8 +139,8 @@
                           <DataTrigger Binding="{Binding Status}"
                                        Value="{x:Static enums:StreamStatus.Streaming}">
                             <Setter Property="Content" Value="Disconnect" />
-                            <Setter Property="Background" Value="#dc3545" />
-                            <Setter Property="BorderBrush" Value="#d6a9ae" />
+                            <Setter Property="Background" Value="#304ffe" />
+                            <Setter Property="BorderBrush" Value="#b8c2ff" />
                             <!-- Красный -->
                             <Setter Property="IsEnabled" Value="True" />
                           </DataTrigger>
@@ -249,7 +249,7 @@
         <!-- Switch bar layout -->
         <Border HorizontalAlignment="Center"
                 Background="#181818"
-                BorderBrush="#0A3A60"
+                BorderBrush="#651FFF"
                 BorderThickness="1"
                 CornerRadius="18"
                 Padding="3"

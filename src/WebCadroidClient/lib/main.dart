@@ -560,7 +560,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: _isStreaming ? Colors.redAccent.shade700 : Colors.green.shade700,
+              backgroundColor: _isStreaming ? Colors.indigoAccent.shade700
+               : Colors.tealAccent.shade700,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),

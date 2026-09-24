@@ -30,7 +30,7 @@ class CameraPreviewCard extends StatelessWidget {
         color: Colors.black,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isStreaming ? Colors.green.shade700 : Colors.white12,
+          color: isStreaming ? Colors.tealAccent.shade700 : Colors.white12,
           width: isStreaming ? 2 : 1,
         ),
       ),
@@ -69,7 +69,7 @@ class CameraPreviewCard extends StatelessWidget {
             Icon(
               isStreaming ? Icons.wifi_tethering : Icons.visibility_off_outlined,
               size: 56,
-              color: isStreaming ? Colors.greenAccent : Colors.white54,
+              color: isStreaming ? Colors.tealAccent : Colors.white54,
             ),
             const SizedBox(height: 16),
             Text(
@@ -131,7 +131,7 @@ class CameraPreviewCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.pause, size: 16, color: Colors.greenAccent),
+                      Icon(Icons.pause, size: 16, color: Colors.tealAccent),
                       SizedBox(width: 4),
                       Text(
                         'Pause Preview',

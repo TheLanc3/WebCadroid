@@ -53,8 +53,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#10406A" />
-                                <Setter Property="Foreground" Value="#0088FF" />
+                                <Setter TargetName="border" Property="Background" Value="#651FFF" />
+                                <Setter Property="Foreground" Value="#B388FF" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Cursor" Value="Hand" />
