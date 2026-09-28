@@ -14,6 +14,7 @@ using WebCadroid.Services;
 using WebCadroid.Types;
 using WebCadroid.Types.Enums;
 using WebCadroid.ViewModels;
+using System.Windows.Resources;
 
 namespace WebCadroid;
 
@@ -42,6 +43,8 @@ public partial class MainWindow : Window {
         _adbService = new AdbService();
         _virtualCamService = new VirtualCamService();
         _virtualCamService.Initialize();
+
+        ShowStreamCap();
 
         _refreshTimer = new DispatcherTimer {
             Interval = TimeSpan.FromSeconds(2)
@@ -192,6 +195,7 @@ public partial class MainWindow : Window {
         _streamCts?.Dispose();
         _streamCts = null;
 
+        ShowStreamCap();
         ShowNoStreamUI();
     }
 
@@ -206,6 +210,18 @@ public partial class MainWindow : Window {
         });
     }
 
+    private void ShowStreamCap() {
+        Uri resourceUri = new("Resources/WebCadroidNoStream.png", UriKind.Relative);
+        StreamResourceInfo imageStream = 
+            System.Windows.Application.GetResourceStream(resourceUri);
+        using MemoryStream imageMs = new();
+
+        imageStream.Stream.CopyTo(imageMs);
+        byte[] imageBytes = imageMs.ToArray();
+        imageMs.SetLength(0);
+
+        _virtualCamService.SendFrame(imageBytes);
+    }
     private async Task StartWebSocketStreamAsync(string deviceId, int port) {
         StopStream();
         _streamCts = new CancellationTokenSource();
