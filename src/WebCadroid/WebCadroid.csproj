@@ -23,6 +23,12 @@
     <ApplicationIcon>webcadroid-icon.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <Authors>TheLanc3</Authors>
+    <Company>TheLanc3</Company>
+    <RepositoryUrl>https://github.com/TheLanc3/WebCadroid</RepositoryUrl>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- Embedded as a WPF pack resource so it works inside the single-file publish -->
     <Resource Include="Resources/**/*.*" />
