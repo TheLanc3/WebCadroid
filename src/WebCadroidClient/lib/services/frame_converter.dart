@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Service responsible for converting raw camera frames (YUV420) to JPEG bytes
 /// and managing hardware settings (USB debugging check, screen brightness).
 class FrameConverter {
-  static const MethodChannel _platform = MethodChannel('com.example.webcadroidclient/settings');
+  static const MethodChannel _platform = MethodChannel('ru.thelanc3.webcadroidclient/settings');
 
   /// Converts a [CameraImage] to a compressed JPEG byte array.
   /// Passes image plane buffers directly to native code to avoid costly Dart loops and memory allocations.

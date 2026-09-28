@@ -1,4 +1,4 @@
-package com.example.webcadroidclient
+package ru.thelanc3.webcadroidclient
 
 import android.graphics.ImageFormat
 import android.graphics.Rect
@@ -12,7 +12,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.example.webcadroidclient/settings"
+    private val CHANNEL = "ru.thelanc3.webcadroidclient/settings"
     private val backgroundExecutor = Executors.newFixedThreadPool(2)
     private var cachedNv21Buffer: ByteArray? = null
 
