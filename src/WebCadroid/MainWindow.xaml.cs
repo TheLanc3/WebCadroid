@@ -63,7 +63,7 @@ public partial class MainWindow : Window {
 
     private void InitializeNotifyIcon() {
         _notifyIcon = new() {
-            Icon = SystemIcons.Application, 
+            Icon = GetNotifyIcon("inactive"), 
             Visible = false
         };
 
@@ -194,7 +194,9 @@ public partial class MainWindow : Window {
         _streamCts?.Cancel();
         _streamCts?.Dispose();
         _streamCts = null;
-
+        
+        _notifyIcon.Icon = GetNotifyIcon("inactive");
+        
         ShowStreamCap();
         ShowNoStreamUI();
     }
@@ -208,6 +210,15 @@ public partial class MainWindow : Window {
             TogglePreviewBtn.Content = "Pause Preview";
             PreviewPausedOverlay.Visibility = Visibility.Collapsed;
         });
+    }
+
+    private Icon GetNotifyIcon(string type) 
+    {
+        Uri resourceUri = new($"Resources/NotifyIcons/webcadroid-{type}.ico", UriKind.Relative);
+        StreamResourceInfo imageStream = System.Windows.Application.GetResourceStream(resourceUri);
+
+        using Stream stream = imageStream.Stream;
+        return new Icon(stream);
     }
 
     private void ShowStreamCap() {
@@ -226,6 +237,7 @@ public partial class MainWindow : Window {
         StopStream();
         _streamCts = new CancellationTokenSource();
         CancellationToken cancellationToken = _streamCts.Token;
+        _notifyIcon.Icon = GetNotifyIcon("stream");
 
         await Task.Run(async () => {
             ClientWebSocket? ws = null;

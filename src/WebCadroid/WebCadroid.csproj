@@ -18,9 +18,14 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>webcadroid-icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- Embedded as a WPF pack resource so it works inside the single-file publish -->
-    <Resource Include="Resources\WebCadroidNoStream.png" />
+    <Resource Include="Resources/**/*.*" />
   </ItemGroup>
   
   <ItemGroup>
