@@ -1,26 +1,31 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Net.WebSockets;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+
+using Forms = System.Windows.Forms;
+using Button = System.Windows.Controls.Button;
+
 using WebCadroid.Services;
 using WebCadroid.Types;
 using WebCadroid.Types.Enums;
+using WebCadroid.ViewModels;
 
 namespace WebCadroid;
 
 /// <summary>
 /// Interaction logic for MainWindow.xaml
 /// </summary>
-public partial class MainWindow : Window 
-{
+public partial class MainWindow : Window {
     private readonly AdbService _adbService;
     private readonly IVirtualCamService _virtualCamService;
     private readonly DispatcherTimer _refreshTimer;
     private bool _isLoading = false;
+    private Forms.NotifyIcon _notifyIcon;
 
     private DeviceModel? _activeDevice = null;
     private CancellationTokenSource? _streamCts;
@@ -28,71 +33,86 @@ public partial class MainWindow : Window
     private bool _isPreviewTabVisible = false;
     private bool _isPreviewPaused = false;
 
-    public MainWindow() 
-    {
+    #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
+
+    public MainWindow() {
         InitializeComponent();
+        InitializeNotifyIcon();
 
         _adbService = new AdbService();
         _virtualCamService = new VirtualCamService();
         _virtualCamService.Initialize();
 
-        _refreshTimer = new DispatcherTimer
-        {
+        _refreshTimer = new DispatcherTimer {
             Interval = TimeSpan.FromSeconds(2)
         };
         _refreshTimer.Tick += async (s, e) => await LoadDevicesAsync();
 
-        Loaded += async (s, e) =>
-        {
+        Loaded += async (s, e) => {
             await LoadDevicesAsync();
             _refreshTimer.Start();
         };
 
         Unloaded += (s, e) => _refreshTimer.Stop();
     }
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
 
-    private async Task LoadDevicesAsync()
-    {
+
+    private void InitializeNotifyIcon() {
+        _notifyIcon = new() {
+            Icon = SystemIcons.Application, 
+            Visible = false
+        };
+
+        _notifyIcon.Click += (sender, e) => {
+            this.Show();
+            this.WindowState = WindowState.Normal;
+            this.Activate();
+            _notifyIcon.Visible = false;
+        };
+
+        this.DataContext = new NotifyViewModel(_notifyIcon);
+    }
+
+    protected override void OnStateChanged(EventArgs e) {
+        if (this.WindowState == WindowState.Minimized) {
+            this.Hide();
+            _notifyIcon.Visible = true;
+        }
+
+        base.OnStateChanged(e);
+    }
+
+    private async Task LoadDevicesAsync() {
         if (_isLoading) return;
 
-        try
-        {
+        try {
             _isLoading = true;
-            var fetchedDevices = await _adbService.GetConnectedDevicesAsync();
-            var currentDevices = DevicesDataGrid.ItemsSource as List<DeviceModel> ?? new List<DeviceModel>();
+            List<DeviceModel> fetchedDevices = 
+                await _adbService.GetConnectedDevicesAsync();
+            List<DeviceModel> currentDevices = DevicesDataGrid.ItemsSource as List<DeviceModel> ?? new List<DeviceModel>();
 
             // Update device list while preserving active streaming status
-            foreach (var device in fetchedDevices)
-            {
+            foreach (DeviceModel device in fetchedDevices)
                 if (_activeDevice != null && device.DeviceId == _activeDevice.DeviceId)
-                {
                     device.Status = StreamStatus.Streaming;
-                }
-            }
 
             if (!AreDeviceListsEqual(currentDevices, fetchedDevices))
-            {
                 DevicesDataGrid.ItemsSource = fetchedDevices;
-            }
         }
-        catch (Exception ex)
-        {
+        catch (Exception ex) {
             Debug.WriteLine($"[MainWindow] Error loading devices: {ex.Message}");
         }
-        finally
-        {
+        finally {
             _isLoading = false;
         }
     }
-    
-    private async void ConnectButton_Click(object sender, RoutedEventArgs e)
-    {
-        var button = sender as Button;
+    private async void ConnectButton_Click(object sender, RoutedEventArgs e) {
+        Button button = (Button)sender;
         if (button?.DataContext is not DeviceModel selectedDevice) return;
 
         // If device is already streaming, disconnect it
-        if (selectedDevice.Status == StreamStatus.Streaming)
-        {
+        if (selectedDevice.Status == StreamStatus.Streaming) {
             StopStream();
             selectedDevice.Status = StreamStatus.Available;
             _activeDevice = null;
@@ -100,8 +120,7 @@ public partial class MainWindow : Window
         }
 
         // If connecting to a new device, stop any currently active stream
-        if (_activeDevice != null && _activeDevice != selectedDevice)
-        {
+        if (_activeDevice != null && _activeDevice != selectedDevice) {
             StopStream();
             _activeDevice.Status = StreamStatus.Available;
         }
@@ -112,82 +131,63 @@ public partial class MainWindow : Window
         // Start WebSocket video stream
         await StartWebSocketStreamAsync(_activeDevice.DeviceId, 8080);
     }
-
-    private bool AreDeviceListsEqual(List<DeviceModel> list1, List<DeviceModel> list2)
-    {
+    private bool AreDeviceListsEqual(List<DeviceModel> list1, 
+                                    List<DeviceModel> list2) {
         if (list1.Count != list2.Count) return false;
         
         for (int i = 0; i < list1.Count; i++)
-        {
             if (list1[i].DeviceId != list2[i].DeviceId || 
                 list1[i].Status != list2[i].Status)
-            {
                 return false;
-            }
-        }
         return true;
     }
-
-    private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e) 
-    {
+    private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e) {
         if (e.ChangedButton == MouseButton.Left)
-        {
             this.DragMove();
-        }
     }
 
-    private void MinimizeButton_Click(object sender, RoutedEventArgs e) 
-    {
-        this.WindowState = WindowState.Minimized;
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) {
+        this.Hide();
+        _notifyIcon.Visible = true;
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e) 
-    {
-        this.Close();
-    }
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => this.Close();
 
-    private void SwitchMode_Checked(object sender, RoutedEventArgs e)
-    {
+    private void SwitchMode_Checked(object sender, RoutedEventArgs e) {
         if (DevicesGridBody == null || PreviewContainer == null) return;
 
-        if (DevicesTabRadio.IsChecked == true)
-        {
+        if (DevicesTabRadio.IsChecked == true) {
             _isPreviewTabVisible = false;
             DevicesGridBody.Visibility = Visibility.Visible;
             PreviewContainer.Visibility = Visibility.Collapsed;
         }
-        else if (PreviewTabRadio.IsChecked == true)
-        {
+        else if (PreviewTabRadio.IsChecked == true) {
             _isPreviewTabVisible = true;
             DevicesGridBody.Visibility = Visibility.Collapsed;
             PreviewContainer.Visibility = Visibility.Visible;
         }
     }
 
-    private void TogglePreviewButton_Click(object sender, RoutedEventArgs e)
-    {
+    private void TogglePreviewButton_Click(object sender, RoutedEventArgs e) {
         _isPreviewPaused = !_isPreviewPaused;
-        if (_isPreviewPaused)
-        {
+        if (_isPreviewPaused) {
             TogglePreviewBtn.Content = "Resume Preview";
             PreviewPausedOverlay.Visibility = Visibility.Visible;
         }
-        else
-        {
+        else {
             TogglePreviewBtn.Content = "Pause Preview";
             PreviewPausedOverlay.Visibility = Visibility.Collapsed;
         }
     }
 
-    protected override void OnClosed(EventArgs e)
-    {
+    protected override void OnClosed(EventArgs e) {
         StopStream();
         _virtualCamService.Dispose();
+        _notifyIcon?.Dispose();
         base.OnClosed(e);
     }
 
-    private void StopStream()
-    {
+    private void StopStream() {
         _streamCts?.Cancel();
         _streamCts?.Dispose();
         _streamCts = null;
@@ -195,10 +195,8 @@ public partial class MainWindow : Window
         ShowNoStreamUI();
     }
 
-    private void ShowNoStreamUI()
-    {
-        Dispatcher.Invoke(() =>
-        {
+    private void ShowNoStreamUI() {
+        Dispatcher.Invoke(() => {
             NoStreamBorder.Visibility = Visibility.Visible;
             StreamImageContainer.Visibility = Visibility.Collapsed;
             StreamImage.Source = null;
@@ -208,52 +206,47 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task StartWebSocketStreamAsync(string deviceId, int port)
-    {
+    private async Task StartWebSocketStreamAsync(string deviceId, int port) {
         StopStream();
         _streamCts = new CancellationTokenSource();
-        var cancellationToken = _streamCts.Token;
+        CancellationToken cancellationToken = _streamCts.Token;
 
-        await Task.Run(async () =>
-        {
+        await Task.Run(async () => {
             ClientWebSocket? ws = null;
-            try
-            {
+            try {
                 await _adbService.SetupForwardPortAsync(deviceId, port, port);
 
                 ws = new ClientWebSocket();
-                using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connectCts.Token);
+                using CancellationTokenSource connectCts = new(TimeSpan.FromSeconds(5));
+                using CancellationTokenSource linkedCts = 
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connectCts.Token);
 
                 await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}"), linkedCts.Token);
 
-                if (ws.State != WebSocketState.Open)
-                {
+                if (ws.State != WebSocketState.Open) {
                     ShowNoStreamUI();
                     return;
                 }
 
-                Dispatcher.Invoke(() =>
-                {
+                Dispatcher.Invoke(() => {
                     NoStreamBorder.Visibility = Visibility.Collapsed;
                     StreamImageContainer.Visibility = Visibility.Visible;
                 });
 
-                var buffer = new byte[65536];
-                using var frameMs = new MemoryStream();
+                byte[] buffer = new byte[65536];
+                using MemoryStream frameMs = new();
 
-                while (!cancellationToken.IsCancellationRequested && ws.State == WebSocketState.Open)
-                {
-                    var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                while (!cancellationToken.IsCancellationRequested 
+                        && ws.State == WebSocketState.Open) {
+                    WebSocketReceiveResult result = await ws.ReceiveAsync(
+                            new ArraySegment<byte>(buffer), cancellationToken);
+
                     if (result.MessageType == WebSocketMessageType.Close)
-                    {
                         break;
-                    }
 
                     frameMs.Write(buffer, 0, result.Count);
 
-                    if (result.EndOfMessage)
-                    {
+                    if (result.EndOfMessage) {
                         byte[] imageBytes = frameMs.ToArray();
                         frameMs.SetLength(0);
 
@@ -261,23 +254,24 @@ public partial class MainWindow : Window
                         _virtualCamService.SendFrame(imageBytes);
 
                         // 2. Render preview only when preview tab is visible and preview is not paused
-                        if (_isPreviewTabVisible && !_isPreviewPaused)
-                        {
-                            _ = Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                try
-                                {
-                                    if (_isPreviewTabVisible && !_isPreviewPaused)
-                                    {
-                                        using var ms = new MemoryStream(imageBytes);
-                                        var bitmap = new BitmapImage();
+                        if (_isPreviewTabVisible && !_isPreviewPaused) {
+                            _ = Dispatcher.BeginInvoke(new Action(() => {
+                                try {
+                                    if (_isPreviewTabVisible 
+                                        && !_isPreviewPaused) {
+                                        using MemoryStream ms = new(imageBytes);
+                                        BitmapImage bitmap = new ();
                                         bitmap.BeginInit();
                                         bitmap.CacheOption = BitmapCacheOption.OnLoad;
                                         bitmap.StreamSource = ms;
                                         bitmap.EndInit();
                                         bitmap.Freeze();
 
-                                        StreamImage.Source = bitmap;
+                                        TransformedBitmap flippedBitmap = new(bitmap,
+                                                            new ScaleTransform(1, -1));
+                                        flippedBitmap.Freeze();
+
+                                        StreamImage.Source = flippedBitmap;
                                     }
                                 }
                                 catch { }
@@ -286,20 +280,15 @@ public partial class MainWindow : Window
                     }
                 }
             }
-            catch (Exception ex)
-            {
+            catch (Exception ex) {
                 Debug.WriteLine($"[MainWindow] WebSocket stream terminated: {ex.Message}");
             }
-            finally
-            {
-                if (ws != null)
-                {
-                    try
-                    {
+            finally {
+                if (ws != null) {
+                    try {
                         if (ws.State == WebSocketState.Open)
-                        {
-                            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-                        }
+                            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure,
+                                "Closing", CancellationToken.None);
                     }
                     catch { }
                     ws.Dispose();
@@ -307,10 +296,9 @@ public partial class MainWindow : Window
 
                 ShowNoStreamUI();
 
-                Dispatcher.Invoke(() =>
-                {
-                    if (_activeDevice != null && _activeDevice.DeviceId == deviceId)
-                    {
+                Dispatcher.Invoke(() => {
+                    if (_activeDevice != null 
+                        && _activeDevice.DeviceId == deviceId) {
                         _activeDevice.Status = StreamStatus.Available;
                         _activeDevice = null;
                     }

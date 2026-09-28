@@ -3,20 +3,19 @@ using System.Threading.Tasks;
 
 namespace WebCadroid.Services;
 
-public interface IVirtualCamService : IDisposable
-{
+public interface IVirtualCamService : IDisposable {
     /// <summary>
-    /// Инициализирует виртуальную камеру и регистрирует DLL в системе
+    /// Initialize a virtual camera and register the DLL
     /// </summary>
     bool Initialize();
 
     /// <summary>
-    /// Передает сжатый JPEG-кадр в виртуальную камеру
+    /// Send a compresseg JPEG into camera
     /// </summary>
     void SendFrame(byte[] jpegBytes);
 
     /// <summary>
-    /// Состояние активности виртуальной камеры
+    /// Activity status for virtual camera
     /// </summary>
     bool IsActive { get; }
 }

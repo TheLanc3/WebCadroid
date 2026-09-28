@@ -1,7 +1,6 @@
 namespace WebCadroid.Types.Enums;
 
-public enum StreamStatus
-{
+public enum StreamStatus {
     NotOpened,
     Available,
     Streaming

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <UserSecretsId>300fa354-9c43-43ea-a4c2-eed886f38e56</UserSecretsId>
 
     <!-- Self-Contained settings -->
@@ -16,6 +17,11 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Embedded as a WPF pack resource so it works inside the single-file publish -->
+    <Resource Include="Resources\WebCadroidNoStream.png" />
+  </ItemGroup>
   
   <ItemGroup>
     <None Include="Utils\**">

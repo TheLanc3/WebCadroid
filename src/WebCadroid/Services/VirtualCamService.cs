@@ -1,15 +1,12 @@
-using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 namespace WebCadroid.Services;
 
-public class VirtualCamService : IVirtualCamService, IDisposable
-{
+public class VirtualCamService : IVirtualCamService, IDisposable {
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern bool SetDllDirectory(string lpPathName);
 
@@ -43,10 +40,8 @@ public class VirtualCamService : IVirtualCamService, IDisposable
 
     public bool IsActive => _isInitialized && _camera != IntPtr.Zero;
 
-    public bool Initialize()
-    {
-        try
-        {
+    public bool Initialize() {
+        try {
             // Set DLL search directory so softcam.dll is always located correctly
             string utilsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Utils");
             SetDllDirectory(utilsDir);
@@ -57,8 +52,7 @@ public class VirtualCamService : IVirtualCamService, IDisposable
             // Create virtual camera instance
             _camera = scCreateCamera(FrameWidth, FrameHeight, FrameRate);
 
-            if (_camera == IntPtr.Zero)
-            {
+            if (_camera == IntPtr.Zero) {
                 Debug.WriteLine("[VirtualCamService] Failed to create virtual camera instance.");
                 return false;
             }
@@ -67,26 +61,21 @@ public class VirtualCamService : IVirtualCamService, IDisposable
             Debug.WriteLine("[VirtualCamService] Virtual camera initialized successfully.");
             return true;
         }
-        catch (Exception ex)
-        {
+        catch (Exception ex) {
             Debug.WriteLine($"[VirtualCamService] Initialization error: {ex.Message}");
             return false;
         }
     }
 
-    public void SendFrame(byte[] jpegBytes)
-    {
+    public void SendFrame(byte[] jpegBytes) {
         if (!IsActive || jpegBytes == null || jpegBytes.Length == 0) return;
 
-        Task.Run(() =>
-        {
-            lock (_frameLock)
-            {
-                try
-                {
-                    using var ms = new MemoryStream(jpegBytes);
-                    using var originalBmp = new Bitmap(ms);
-                    using var resizedBmp = (originalBmp.Width == FrameWidth && originalBmp.Height == FrameHeight)
+        Task.Run(() => {
+            lock (_frameLock) {
+                try {
+                    using MemoryStream ms = new(jpegBytes);
+                    using Bitmap originalBmp = new(ms);
+                    using Bitmap resizedBmp = (originalBmp.Width == FrameWidth && originalBmp.Height == FrameHeight)
                         ? (Bitmap)originalBmp.Clone()
                         : new Bitmap(originalBmp, new Size(FrameWidth, FrameHeight));
 
@@ -99,8 +88,7 @@ public class VirtualCamService : IVirtualCamService, IDisposable
                         PixelFormat.Format24bppRgb
                     );
 
-                    try
-                    {
+                    try {
                         const int bytesPerPixel = 3;
                         int rowSize = FrameWidth * bytesPerPixel;
 
@@ -112,27 +100,23 @@ public class VirtualCamService : IVirtualCamService, IDisposable
 
                         scSendFrame(_camera, _pixelBuffer);
                     }
-                    finally
-                    {
+                    finally {
                         resizedBmp.UnlockBits(data);
                     }
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     Debug.WriteLine($"[VirtualCamService] Frame error: {ex.Message}");
                 }
             }
         });
     }
 
-    private void RegisterDll()
-    {
+    private void RegisterDll() {
         string dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Utils", "softcam.dll");
         if (!File.Exists(dllPath)) return;
 
-        try
-        {
-            var startInfo = new ProcessStartInfo
+        try {
+            ProcessStartInfo startInfo = new()
             {
                 FileName = "regsvr32.exe",
                 Arguments = $"/s \"{dllPath}\"",
@@ -141,19 +125,16 @@ public class VirtualCamService : IVirtualCamService, IDisposable
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(startInfo);
+            using Process? process = Process.Start(startInfo);
             process?.WaitForExit(3000);
         }
-        catch (Exception ex)
-        {
+        catch (Exception ex) {
             Debug.WriteLine($"[VirtualCamService] DLL registration note: {ex.Message}");
         }
     }
 
-    public void Dispose()
-    {
-        lock (_frameLock)
-        {
+    public void Dispose() {
+        lock (_frameLock) {
             if (_camera != IntPtr.Zero)
             {
                 scDeleteCamera(_camera);
