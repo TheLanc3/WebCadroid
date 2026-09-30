@@ -4,7 +4,7 @@ using Keyboard = System.Windows.Input.Keyboard;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using ModifierKeys = System.Windows.Input.ModifierKeys;
 
-namespace WebCadroid.ViewModels;
+namespace WebCadroid.Controls;
 
 public class HotKeyTextBox : TextBox {
     public Key SelectedKey { get; private set; }
