@@ -94,12 +94,12 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       return;
     }
 
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.paused) {
       // App minimized: stop stream if active
       if (_isStreaming) {
         _stopStream();
       }
-    } else if (state == AppLifecycleState.resumed) {
+    } else if (state == AppLifecycleState.resumed && !_isStreaming) {
       // Re-initialize camera on resume if needed
       _initCameraController(_cameras[_selectedCameraIndex]);
     }
