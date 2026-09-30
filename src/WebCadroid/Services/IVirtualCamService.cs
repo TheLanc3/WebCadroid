@@ -1,6 +1,3 @@
-using System;
-using System.Threading.Tasks;
-
 namespace WebCadroid.Services;
 
 public interface IVirtualCamService : IDisposable {
