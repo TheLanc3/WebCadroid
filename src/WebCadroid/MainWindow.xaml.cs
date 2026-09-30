@@ -212,8 +212,7 @@ public partial class MainWindow : Window {
         });
     }
 
-    private Icon GetNotifyIcon(string type) 
-    {
+    private Icon GetNotifyIcon(string type) {
         Uri resourceUri = new($"Resources/NotifyIcons/webcadroid-{type}.ico", UriKind.Relative);
         StreamResourceInfo imageStream = System.Windows.Application.GetResourceStream(resourceUri);
 
