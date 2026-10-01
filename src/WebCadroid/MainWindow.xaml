@@ -45,6 +45,11 @@
         <StackPanel Margin="0,0,10,0"
                     Orientation="Horizontal"
                     Grid.Column="1">
+          <Button Content="⁝"
+                  VerticalAlignment="Center"
+                  Click="MinimizeButton_Click"
+                  Command="{Binding MoveToTrayCommand}"
+                  Style="{StaticResource TitleBarBtnStyle}" />
           <Button Content="—"
                   Click="MinimizeButton_Click"
                   Command="{Binding MoveToTrayCommand}"
@@ -98,7 +103,7 @@
                                 Header="Device ID" />
             <!-- Stream status Column -->
             <DataGridTextColumn Width="100"
-                                Binding="{Binding Status}"
+                                Binding="{Binding FriendlyStatus}"
                                 Header="Stream" />
             <!-- Action Column (Connect Button on Hover) -->
             <DataGridTemplateColumn Width="120">
@@ -113,7 +118,7 @@
                     <Button.Style>
                       <Style TargetType="Button">
                         <!-- По дефолту (NotOpened) -->
-                        <Setter Property="Content" Value="Not opened" />
+                        <Setter Property="Content" Value="Not Opened" />
                         <Setter Property="Background" Value="#6c757d" />
                         <Setter Property="BorderBrush" Value="#ccc" />
                         <Setter Property="Foreground" Value="White" />
@@ -121,7 +126,7 @@
                         <Setter Property="Template">
                           <Setter.Value>
                             <ControlTemplate TargetType="Button">
-                              <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="2" >
+                              <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1.5" >
                                   <ContentPresenter x:Name="contentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                               </Border>
                             </ControlTemplate>

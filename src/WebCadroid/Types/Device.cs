@@ -15,6 +15,22 @@ public class DeviceModel : INotifyPropertyChanged {
                 _status = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(IsConnected));
+                OnPropertyChanged(nameof(FriendlyStatus));
+            }
+        }
+    }
+
+    public string FriendlyStatus {
+        get {
+            switch (Status) {
+                case StreamStatus.Available:
+                    return "Available";
+                case StreamStatus.NotOpened:
+                    return "Not Opened";
+                case StreamStatus.Streaming:
+                    return "Streaming";
+                default:
+                    return "Unknown";
             }
         }
     }
@@ -23,7 +39,6 @@ public class DeviceModel : INotifyPropertyChanged {
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) {
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
 }

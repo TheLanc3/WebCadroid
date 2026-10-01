@@ -1,7 +1,6 @@
 namespace WebCadroid.Commands;
 
-public class MoveToTrayCommand : BaseCommand
-{
+public class MoveToTrayCommand : BaseCommand {
     private readonly NotifyIcon _notifyIcon;
 
     public MoveToTrayCommand(NotifyIcon notifyIcon) =>
