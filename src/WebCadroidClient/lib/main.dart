@@ -1,14 +1,34 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:webcadroidclient/services/frame_converter.dart';
 import 'package:webcadroidclient/services/streaming_server.dart';
 import 'package:webcadroidclient/widgets/camera_preview_card.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _initForegroundService();
   runApp(const MyApp());
+}
+
+void _initForegroundService() {
+  FlutterForegroundTask.init(
+    androidNotificationOptions: AndroidNotificationOptions(
+      channelId: 'webcadroid_stream_channel',
+      channelName: 'WebCadroid Camera Stream',
+      channelDescription: 'Keeps camera and streaming server alive in background.',
+      channelImportance: NotificationChannelImportance.LOW,
+      priority: NotificationPriority.LOW,
+    ),
+    iosNotificationOptions: const IOSNotificationOptions(),
+    foregroundTaskOptions: ForegroundTaskOptions(
+      eventAction: ForegroundTaskEventAction.nothing(),
+      autoRunOnBoot: false,
+      allowWakeLock: true,
+      allowWifiLock: true,
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -94,11 +114,9 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       return;
     }
 
-    if (state == AppLifecycleState.paused) {
-      // App minimized: stop stream if active
-      if (_isStreaming) {
-        _stopStream();
-      }
+    // Dispose camera, if not streaming
+    if (state == AppLifecycleState.paused && !_isStreaming) {
+      _controller?.dispose();
     } else if (state == AppLifecycleState.resumed && !_isStreaming) {
       // Re-initialize camera on resume if needed
       _initCameraController(_cameras[_selectedCameraIndex]);
@@ -292,18 +310,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       await _streamingServer.start(port);
       _isStreaming = true;
 
-      // Save previous screen brightness and reduce to 10% (0.1) for energy savings
-      _previousBrightness = await FrameConverter.getScreenBrightness();
-      await FrameConverter.setScreenBrightness(0.1);
+      // Starting foreground process
+      await FlutterForegroundTask.startService(
+        serviceId: 256,
+        notificationTitle: 'WebCadroid Streaming',
+        notificationText: 'Camera stream active on port $port',
+      );
 
       // Start camera image processing
       await _startCameraImageStream();
 
       // Pause preview automatically to save battery on OLED screens
       await _pausePreview();
-
-      // Keep screen awake while streaming
-      await WakelockPlus.enable();
 
       if (mounted) setState(() {});
     } catch (e) {
@@ -338,7 +356,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     }
 
     await _streamingServer.stop();
-    await WakelockPlus.disable();
+    await FlutterForegroundTask.stopService();
     await _resumePreview();
 
     // Reset screen brightness back to previous value or system default

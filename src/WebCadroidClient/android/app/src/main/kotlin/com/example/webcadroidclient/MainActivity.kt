@@ -4,7 +4,6 @@ import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.provider.Settings
-import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -12,7 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "ru.thelanc3.webcadroidclient/settings"
+    private val CHANNEL = "ru.thelanc3.webcadroidclient/native_addons"
     private val backgroundExecutor = Executors.newFixedThreadPool(2)
     private var cachedNv21Buffer: ByteArray? = null
 
@@ -29,51 +28,6 @@ class MainActivity : FlutterActivity() {
                         result.success(adbEnabled)
                     } catch (e: Exception) {
                         result.error("ADB_CHECK_FAILED", e.message, null)
-                    }
-                }
-                "getScreenBrightness" -> {
-                    try {
-                        val layoutParams = window.attributes
-                        var brightness = layoutParams.screenBrightness
-                        if (brightness < 0) {
-                            val systemBrightness = Settings.System.getInt(
-                                contentResolver,
-                                Settings.System.SCREEN_BRIGHTNESS, 128
-                            )
-                            brightness = systemBrightness / 255.0f
-                        }
-                        result.success(brightness.toDouble())
-                    } catch (e: Exception) {
-                        result.error("BRIGHTNESS_ERROR", e.message, null)
-                    }
-                }
-                "setScreenBrightness" -> {
-                    val brightness = call.argument<Double>("brightness")?.toFloat()
-                    if (brightness != null) {
-                        runOnUiThread {
-                            try {
-                                val layoutParams = window.attributes
-                                layoutParams.screenBrightness = brightness.coerceIn(0.01f, 1.0f)
-                                window.attributes = layoutParams
-                                result.success(true)
-                            } catch (e: Exception) {
-                                result.error("BRIGHTNESS_ERROR", e.message, null)
-                            }
-                        }
-                    } else {
-                        result.error("INVALID_ARGUMENT", "Brightness argument is missing", null)
-                    }
-                }
-                "resetScreenBrightness" -> {
-                    runOnUiThread {
-                        try {
-                            val layoutParams = window.attributes
-                            layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                            window.attributes = layoutParams
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.error("BRIGHTNESS_ERROR", e.message, null)
-                        }
                     }
                 }
                 "convertYuvToJpeg" -> {
