@@ -38,6 +38,7 @@ dependencies:
   image: ^4.1.7
   web_socket_channel: ^3.0.3
   flutter_foreground_task: ^8.0.0
+  camera_android: ^0.10.12
 
 dev_dependencies:
   flutter_test:
