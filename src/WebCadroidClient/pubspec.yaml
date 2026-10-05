@@ -35,10 +35,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   camera: ^0.11.0
+  camera_android: ^0.10.12
   image: ^4.1.7
   web_socket_channel: ^3.0.3
-  flutter_foreground_task: ^8.0.0
-  camera_android: ^0.10.12
 
 dev_dependencies:
   flutter_test:

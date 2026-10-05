@@ -1,12 +1,15 @@
 package ru.thelanc3.webcadroidclient
 
+import android.content.Intent
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.os.Build
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import ru.thelanc3.webcadroidclient.Services.CameraStreamService
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
@@ -30,6 +33,54 @@ class MainActivity : FlutterActivity() {
                         result.error("ADB_CHECK_FAILED", e.message, null)
                     }
                 }
+                "startNativeStream" -> {
+                    try {
+                        val port = call.argument<Int>("port") ?: 8080
+                        val fps = call.argument<Int>("fps") ?: 30
+                        val cameraId = call.argument<String>("cameraId") ?: "0"
+                        val width = call.argument<Int>("width") ?: 1280
+                        val height = call.argument<Int>("height") ?: 720
+                        val quality = call.argument<Int>("quality") ?: 70
+
+                        val intent = Intent(this, CameraStreamService::class.java).apply {
+                            action = CameraStreamService.ACTION_START
+                            putExtra(CameraStreamService.EXTRA_PORT, port)
+                            putExtra(CameraStreamService.EXTRA_FPS, fps)
+                            putExtra(CameraStreamService.EXTRA_CAMERA_ID, cameraId)
+                            putExtra(CameraStreamService.EXTRA_WIDTH, width)
+                            putExtra(CameraStreamService.EXTRA_HEIGHT, height)
+                            putExtra(CameraStreamService.EXTRA_QUALITY, quality)
+                        }
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("START_STREAM_FAILED", e.message, null)
+                    }
+                }
+                "stopNativeStream" -> {
+                    try {
+                        val intent = Intent(this, CameraStreamService::class.java).apply {
+                            action = CameraStreamService.ACTION_STOP
+                        }
+                        startService(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("STOP_STREAM_FAILED", e.message, null)
+                    }
+                }
+                "getNativeStreamStatus" -> {
+                    result.success(
+                        mapOf(
+                            "isRunning" to CameraStreamService.isRunning,
+                            "clientCount" to CameraStreamService.clientCount
+                        )
+                    )
+                }
                 "convertYuvToJpeg" -> {
                     val width = call.argument<Int>("width")
                     val height = call.argument<Int>("height")
@@ -40,7 +91,6 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
 
-                    // Check if planes were passed (zero-overhead from Dart)
                     val yBytes = call.argument<ByteArray>("y")
                     val uBytes = call.argument<ByteArray>("u")
                     val vBytes = call.argument<ByteArray>("v")
@@ -62,7 +112,6 @@ class MainActivity : FlutterActivity() {
                                     cachedNv21Buffer!!
                                 }
 
-                                // 1. Copy Y plane
                                 if (yRowStride == width) {
                                     System.arraycopy(yBytes, 0, buffer, 0, width * height)
                                 } else {
@@ -75,7 +124,6 @@ class MainActivity : FlutterActivity() {
                                     }
                                 }
 
-                                // 2. Copy UV planes (NV21 format: Y... V U V U...)
                                 var dstUvPos = width * height
                                 val halfHeight = height / 2
                                 val halfWidth = width / 2

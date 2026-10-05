@@ -13,6 +13,11 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
 
+        <service
+            android:name=".Services.CameraStreamService"
+            android:foregroundServiceType="camera"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

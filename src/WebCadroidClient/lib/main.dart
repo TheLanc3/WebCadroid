@@ -1,34 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:webcadroidclient/services/frame_converter.dart';
-import 'package:webcadroidclient/services/streaming_server.dart';
 import 'package:webcadroidclient/widgets/camera_preview_card.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  _initForegroundService();
   runApp(const MyApp());
-}
-
-void _initForegroundService() {
-  FlutterForegroundTask.init(
-    androidNotificationOptions: AndroidNotificationOptions(
-      channelId: 'webcadroid_stream_channel',
-      channelName: 'WebCadroid Camera Stream',
-      channelDescription: 'Keeps camera and streaming server alive in background.',
-      channelImportance: NotificationChannelImportance.LOW,
-      priority: NotificationPriority.LOW,
-    ),
-    iosNotificationOptions: const IOSNotificationOptions(),
-    foregroundTaskOptions: ForegroundTaskOptions(
-      eventAction: ForegroundTaskEventAction.nothing(),
-      autoRunOnBoot: false,
-      allowWakeLock: true,
-      allowWifiLock: true,
-    ),
-  );
 }
 
 class MyApp extends StatelessWidget {
@@ -36,7 +16,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Pure night theme for minimal OLED/AMOLED power consumption during wakelock
+    // Pure night theme for minimal OLED/AMOLED power consumption
     final darkTheme = ThemeData.dark(useMaterial3: true).copyWith(
       scaffoldBackgroundColor: Colors.black,
       colorScheme: const ColorScheme.dark(
@@ -74,7 +54,6 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver {
-  final StreamingServer _streamingServer = StreamingServer();
   final TextEditingController _portController = TextEditingController(text: "8080");
 
   List<CameraDescription> _cameras = [];
@@ -85,11 +64,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   bool _isChangingCamera = false;
   bool _isStreaming = false;
   bool _isPreviewPaused = false;
-  double? _previousBrightness;
+
+  // Stream preview variables
+  WebSocket? _previewSocket;
+  Uint8List? _streamPreviewFrame;
+  Timer? _statusTimer;
+  int _clientCount = 0;
 
   int _targetFps = 30;
-  bool _isProcessingFrame = false;
-  DateTime _lastFrameTime = DateTime.now();
 
   @override
   void initState() {
@@ -101,7 +83,11 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stopStream();
+    _stopStatusTimer();
+    _disconnectPreviewSocket();
+    if (_isStreaming) {
+      FrameConverter.stopNativeStream();
+    }
     _controller?.dispose();
     _portController.dispose();
     super.dispose();
@@ -109,17 +95,30 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isStreaming) {
+      // While streaming, screen lock or background minimizes CPU: disconnect local preview socket.
+      // The native CameraStreamService continues capturing and streaming in background.
+      if (state == AppLifecycleState.paused) {
+        _disconnectPreviewSocket();
+      } else if (state == AppLifecycleState.resumed && !_isPreviewPaused) {
+        final port = int.tryParse(_portController.text.trim()) ?? 8080;
+        _connectPreviewSocket(port);
+      }
+      return;
+    }
+
     final cameraController = _controller;
     if (cameraController == null || !cameraController.value.isInitialized) {
       return;
     }
 
-    // Dispose camera, if not streaming
-    if (state == AppLifecycleState.paused && !_isStreaming) {
+    if (state == AppLifecycleState.paused) {
       _controller?.dispose();
-    } else if (state == AppLifecycleState.resumed && !_isStreaming) {
-      // Re-initialize camera on resume if needed
-      _initCameraController(_cameras[_selectedCameraIndex]);
+      _controller = null;
+    } else if (state == AppLifecycleState.resumed) {
+      if (_cameras.isNotEmpty) {
+        _initCameraController(_cameras[_selectedCameraIndex]);
+      }
     }
   }
 
@@ -138,25 +137,10 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     }
   }
 
-  /// Safely disposes the old camera controller and initializes the new camera controller.
   Future<void> _initCameraController(CameraDescription cameraDescription) async {
     if (_isChangingCamera) return;
     _isChangingCamera = true;
 
-    final bool wasStreaming = _isStreaming;
-    final bool wasPreviewPaused = _isPreviewPaused;
-
-    // 1. If currently streaming, stop image stream from old controller
-    if (_controller != null && _controller!.value.isStreamingImages) {
-      try {
-        await _controller!.stopImageStream();
-      } catch (e) {
-        debugPrint('[CameraScreen] Error stopping image stream: $e');
-      }
-    }
-
-    // 2. Safely dispose the old controller FIRST before allocating the new one
-    // On Android Camera2 HAL, two cameras cannot be held open concurrently
     if (_controller != null) {
       final oldController = _controller;
       _controller = null;
@@ -164,7 +148,6 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       await oldController?.dispose();
     }
 
-    // 3. Create and initialize new controller
     final newController = CameraController(
       cameraDescription,
       ResolutionPreset.high,
@@ -182,88 +165,96 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       setState(() {
         _controller = newController;
         _isChangingCamera = false;
+        _isPreviewPaused = false;
       });
-
-      // 4. Restore streaming state if stream was active
-      if (wasStreaming) {
-        await _startCameraImageStream();
-        if (wasPreviewPaused) {
-          await _pausePreview();
-        }
-      }
     } catch (e) {
-      debugPrint('[CameraScreen] Error initializing new camera: $e');
+      debugPrint('[CameraScreen] Error initializing viewfinder camera: $e');
       if (mounted) {
         setState(() => _isChangingCamera = false);
       }
     }
   }
 
-  Future<void> _startCameraImageStream() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    if (_controller!.value.isStreamingImages) return;
-
-    final frameIntervalMs = (1000 / _targetFps).round();
-
-    await _controller!.startImageStream((CameraImage image) async {
-      if (!_isStreaming) return;
-
-      // Skip image processing if no WebSocket clients are listening to conserve battery and CPU
-      if (!_streamingServer.hasClients) return;
-
-      final now = DateTime.now();
-      if (now.difference(_lastFrameTime).inMilliseconds < frameIntervalMs) {
-        return; // FPS limiting
+  void _startStatusTimer() {
+    _stopStatusTimer();
+    _statusTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!_isStreaming) {
+        timer.cancel();
+        return;
       }
-
-      if (_isProcessingFrame) return; // Drop frame if previous is still compressing
-      _isProcessingFrame = true;
-      _lastFrameTime = now;
-
-      try {
-        final jpegBytes = await FrameConverter.convertYuvToJpeg(image);
-        if (jpegBytes != null && jpegBytes.isNotEmpty) {
-          _streamingServer.broadcastFrame(jpegBytes);
-        }
-      } catch (e) {
-        debugPrint('[CameraScreen] Frame processing error: $e');
-      } finally {
-        _isProcessingFrame = false;
+      final status = await FrameConverter.getNativeStreamStatus();
+      if (mounted) {
+        setState(() {
+          _clientCount = (status['clientCount'] as int?) ?? 0;
+        });
       }
     });
   }
 
-  Future<void> _pausePreview() async {
-    if (_controller != null && _controller!.value.isInitialized) {
-      try {
-        await _controller!.pausePreview();
-      } catch (e) {
-        debugPrint('[CameraScreen] Error pausing preview: $e');
-      }
-    }
-    if (mounted) {
-      setState(() => _isPreviewPaused = true);
+  void _stopStatusTimer() {
+    _statusTimer?.cancel();
+    _statusTimer = null;
+    _clientCount = 0;
+  }
+
+  void _connectPreviewSocket(int port) async {
+    _disconnectPreviewSocket();
+    try {
+      final ws = await WebSocket.connect('ws://127.0.0.1:$port');
+      _previewSocket = ws;
+      ws.listen(
+        (data) {
+          if (data is List<int> && mounted && !_isPreviewPaused) {
+            setState(() {
+              _streamPreviewFrame = Uint8List.fromList(data);
+            });
+          }
+        },
+        onError: (e) {
+          _disconnectPreviewSocket();
+        },
+        onDone: () {
+          _disconnectPreviewSocket();
+        },
+        cancelOnError: true,
+      );
+    } catch (e) {
+      debugPrint('[CameraScreen] Error connecting to local preview stream: $e');
     }
   }
 
-  Future<void> _resumePreview() async {
-    if (_controller != null && _controller!.value.isInitialized) {
-      try {
-        await _controller!.resumePreview();
-      } catch (e) {
-        debugPrint('[CameraScreen] Error resuming preview: $e');
-      }
-    }
+  void _disconnectPreviewSocket() {
+    try {
+      _previewSocket?.close();
+    } catch (_) {}
+    _previewSocket = null;
     if (mounted) {
-      setState(() => _isPreviewPaused = false);
+      setState(() {
+        _streamPreviewFrame = null;
+      });
     }
   }
 
   Future<void> _togglePreviewPause() async {
-    if (_isPreviewPaused) {
-      await _resumePreview();
+    if (_isStreaming) {
+      if (_isPreviewPaused) {
+        setState(() => _isPreviewPaused = false);
+        final port = int.tryParse(_portController.text.trim()) ?? 8080;
+        _connectPreviewSocket(port);
+      } else {
+        _disconnectPreviewSocket();
+        setState(() => _isPreviewPaused = true);
+      }
     } else {
-      await _pausePreview();
+      if (_controller != null && _controller!.value.isInitialized) {
+        if (_isPreviewPaused) {
+          await _controller!.resumePreview();
+          setState(() => _isPreviewPaused = false);
+        } else {
+          await _controller!.pausePreview();
+          setState(() => _isPreviewPaused = true);
+        }
+      }
     }
   }
 
@@ -272,26 +263,30 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     if (!mounted) return;
 
     if (!usbDebug) {
-      await showDialog(
+      final proceed = await showDialog<bool>(
         context: context,
         builder: (BuildContext dialogContext) {
           return AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('USB Debugging Required', style: TextStyle(color: Colors.white)),
+            title: const Text('USB Debugging Recommended', style: TextStyle(color: Colors.white)),
             content: const Text(
-              'Please enable USB debugging in Developer Options on your device to forward video to your PC.',
+              'USB debugging is not enabled. If using USB cable forwarding, enable Developer Options -> USB Debugging.\n\nContinue anyway?',
               style: TextStyle(color: Colors.white70),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('OK', style: TextStyle(color: Colors.deepPurpleAccent)),
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Continue', style: TextStyle(color: Colors.deepPurpleAccent)),
               ),
             ],
           );
         },
       );
-      return;
+      if (proceed != true) return;
     }
 
     if (_isStreaming) {
@@ -302,72 +297,71 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   }
 
   Future<void> _startStream() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-
-    final port = int.tryParse(_portController.text) ?? 8080;
+    final int port = int.tryParse(_portController.text.trim()) ?? 8080;
 
     try {
-      await _streamingServer.start(port);
-      _isStreaming = true;
+      // 1. Dispose Flutter CameraController to grant exclusive hardware access to the Camera2 native service
+      if (_controller != null) {
+        final old = _controller;
+        _controller = null;
+        if (mounted) setState(() {});
+        await old?.dispose();
+      }
 
-      // Starting foreground process
-      await FlutterForegroundTask.startService(
-        serviceId: 256,
-        notificationTitle: 'WebCadroid Streaming',
-        notificationText: 'Camera stream active on port $port',
+      final cameraId = _cameras.isNotEmpty ? _cameras[_selectedCameraIndex].name : "0";
+
+      // 2. Start native Android Foreground Service with Camera2 API and NanoWSD server
+      final started = await FrameConverter.startNativeStream(
+        port: port,
+        fps: _targetFps,
+        cameraId: cameraId,
+        width: 1280,
+        height: 720,
+        quality: 70,
       );
 
-      // Start camera image processing
-      await _startCameraImageStream();
+      if (!started) {
+        throw Exception('Native Camera2 service failed to start.');
+      }
 
-      // Pause preview automatically to save battery on OLED screens
-      await _pausePreview();
+      setState(() {
+        _isStreaming = true;
+        _isPreviewPaused = true; // Default to energy-saving lock-screen ready mode
+      });
 
-      if (mounted) setState(() {});
+      _startStatusTimer();
     } catch (e) {
       debugPrint('[CameraScreen] Error starting stream: $e');
-      _isStreaming = false;
-
-      // Restore brightness if failed
-      if (_previousBrightness != null) {
-        await FrameConverter.setScreenBrightness(_previousBrightness!);
-        _previousBrightness = null;
-      } else {
-        await FrameConverter.resetScreenBrightness();
-      }
+      await _stopStream();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start server: $e')),
+          SnackBar(content: Text('Failed to start camera stream: $e')),
         );
       }
     }
   }
 
   Future<void> _stopStream() async {
-    _isStreaming = false;
+    _disconnectPreviewSocket();
+    _stopStatusTimer();
 
-    if (_controller != null && _controller!.value.isStreamingImages) {
-      try {
-        await _controller!.stopImageStream();
-      } catch (e) {
-        debugPrint('[CameraScreen] Error stopping image stream: $e');
-      }
+    try {
+      await FrameConverter.stopNativeStream();
+    } catch (e) {
+      debugPrint('[CameraScreen] Error stopping native stream: $e');
     }
 
-    await _streamingServer.stop();
-    await FlutterForegroundTask.stopService();
-    await _resumePreview();
+    setState(() {
+      _isStreaming = false;
+      _isPreviewPaused = false;
+      _streamPreviewFrame = null;
+    });
 
-    // Reset screen brightness back to previous value or system default
-    if (_previousBrightness != null) {
-      await FrameConverter.setScreenBrightness(_previousBrightness!);
-      _previousBrightness = null;
-    } else {
-      await FrameConverter.resetScreenBrightness();
+    // Reopen viewfinder preview
+    if (_cameras.isNotEmpty && mounted) {
+      await _initCameraController(_cameras[_selectedCameraIndex]);
     }
-
-    if (mounted) setState(() {});
   }
 
   String _getCameraName(CameraDescription camera) {
@@ -382,7 +376,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   }
 
   Future<void> _showCameraSelectionDialog() async {
-    if (_cameras.isEmpty) return;
+    if (_cameras.isEmpty || _isStreaming) return;
 
     await showDialog(
       context: context,
@@ -461,7 +455,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       );
     }
 
-    final port = int.tryParse(_portController.text) ?? 8080;
+    final port = int.tryParse(_portController.text.trim()) ?? 8080;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -473,15 +467,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             controller: _controller,
             isStreaming: _isStreaming,
             isPreviewPaused: _isPreviewPaused,
+            streamPreviewFrame: _streamPreviewFrame,
             port: port,
-            clientCount: _streamingServer.clientCount,
+            clientCount: _clientCount,
             onTogglePreviewPause: _togglePreviewPause,
           ),
           const SizedBox(height: 16),
 
           // Change Camera Button
           OutlinedButton.icon(
-            onPressed: (_cameras.length > 1 && !_isChangingCamera)
+            onPressed: (_cameras.length > 1 && !_isChangingCamera && !_isStreaming)
                 ? _showCameraSelectionDialog
                 : null,
             icon: const Icon(Icons.switch_camera),
@@ -568,7 +563,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
           // Stream Toggle Button
           FilledButton.icon(
-            onPressed: (_controller != null && _controller!.value.isInitialized)
+            onPressed: (_controller != null && _controller!.value.isInitialized) || _isStreaming
                 ? _toggleStream
                 : null,
             icon: Icon(_isStreaming ? Icons.stop : Icons.play_arrow),
@@ -578,8 +573,9 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: _isStreaming ? Colors.indigoAccent.shade700
-               : Colors.tealAccent.shade700,
+              backgroundColor: _isStreaming
+                  ? Colors.indigoAccent.shade700
+                  : Colors.tealAccent.shade700,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
