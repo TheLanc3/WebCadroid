@@ -1,0 +1,169 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature/**'
+      - '**/implementation'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ============================================================================
+  # 1. Build Desktop Application (Windows WPF .NET)
+  # ============================================================================
+  build-desktop:
+    name: Build Desktop (Windows .NET)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          include-prerelease: true
+
+      - name: Verify .NET Version
+        run: dotnet --version
+
+      - name: Restore Desktop Dependencies
+        run: dotnet restore src/WebCadroid/WebCadroid.csproj
+
+      - name: Publish Desktop App (win-x64 Standalone)
+        shell: pwsh
+        run: dotnet publish src/WebCadroid/WebCadroid.csproj -c Release -r win-x64 --self-contained true -o dist/WebCadroid
+
+      - name: Create Desktop Release Archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/WebCadroid/*" -DestinationPath "dist/WebCadroid-Windows-x64.zip" -Force
+
+      - name: Upload Desktop Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebCadroid-Windows-x64
+          path: dist/WebCadroid-Windows-x64.zip
+          retention-days: 14
+
+  # ============================================================================
+  # 2. Build Mobile Application (Android Flutter Client)
+  # ============================================================================
+  build-android:
+    name: Build Android Client (Flutter)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/WebCadroidClient
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
+
+      - name: Verify Flutter & Dart
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter Code
+        run: flutter analyze
+
+      - name: Run Unit & Widget Tests
+        run: flutter test
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Build Release App Bundle (AAB)
+        run: flutter build appbundle --release
+
+      - name: Copy & Organize Android Artifacts
+        run: |
+          mkdir -p ../../dist/Android
+          cp build/app/outputs/flutter-apk/app-release.apk ../../dist/Android/WebCadroidClient.apk
+          cp build/app/outputs/bundle/release/app-release.aab ../../dist/Android/WebCadroidClient.aab
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebCadroidClient-APK
+          path: dist/Android/WebCadroidClient.apk
+          retention-days: 14
+
+      - name: Upload Android App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebCadroidClient-AAB
+          path: dist/Android/WebCadroidClient.aab
+          retention-days: 14
+
+  # ============================================================================
+  # 3. Create GitHub Release (Runs on version tags like v1.0.0)
+  # ============================================================================
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Desktop Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WebCadroid-Windows-x64
+          path: release-assets
+
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: WebCadroidClient-APK
+          path: release-assets
+
+      - name: Download Android App Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: WebCadroidClient-AAB
+          path: release-assets
+
+      - name: Publish Release to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/WebCadroid-Windows-x64.zip
+            release-assets/WebCadroidClient.apk
+            release-assets/WebCadroidClient.aab
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
