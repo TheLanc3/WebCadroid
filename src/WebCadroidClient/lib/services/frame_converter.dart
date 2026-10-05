@@ -84,4 +84,59 @@ class FrameConverter {
       debugPrint('[FrameConverter] Failed to reset brightness: $e');
     }
   }
+
+  /// Starts the native background Camera2 streaming service with WebSocket broadcast.
+  /// This service runs as a Foreground Service with WakeLock and continues streaming
+  /// even when the screen is locked/off or the app is minimized.
+  static Future<bool> startNativeStream({
+    required int port,
+    required int fps,
+    required String cameraId,
+    int width = 1280,
+    int height = 720,
+    int quality = 70,
+  }) async {
+    try {
+      final bool? success = await _platform.invokeMethod<bool>('startNativeStream', {
+        'port': port,
+        'fps': fps,
+        'cameraId': cameraId,
+        'width': width,
+        'height': height,
+        'quality': quality,
+      });
+      return success ?? false;
+    } catch (e) {
+      debugPrint('[FrameConverter] Failed to start native stream: $e');
+      return false;
+    }
+  }
+
+  /// Stops the native background Camera2 streaming service.
+  static Future<bool> stopNativeStream() async {
+    try {
+      final bool? success = await _platform.invokeMethod<bool>('stopNativeStream');
+      return success ?? false;
+    } catch (e) {
+      debugPrint('[FrameConverter] Failed to stop native stream: $e');
+      return false;
+    }
+  }
+
+  /// Queries the status of the native stream service (running state and connected client count).
+  static Future<Map<String, dynamic>> getNativeStreamStatus() async {
+    try {
+      final Map<dynamic, dynamic>? res =
+          await _platform.invokeMethod<Map<dynamic, dynamic>>('getNativeStreamStatus');
+      if (res != null) {
+        return {
+          'isRunning': res['isRunning'] == true,
+          'clientCount': (res['clientCount'] as num?)?.toInt() ?? 0,
+        };
+      }
+      return {'isRunning': false, 'clientCount': 0};
+    } catch (e) {
+      return {'isRunning': false, 'clientCount': 0};
+    }
+  }
 }
