@@ -84,7 +84,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopStatusTimer();
-    _disconnectPreviewSocket();
+    _disconnectPreviewSocket(notify: false);
     if (_isStreaming) {
       FrameConverter.stopNativeStream();
     }
@@ -223,15 +223,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     }
   }
 
-  void _disconnectPreviewSocket() {
+  void _disconnectPreviewSocket({bool notify = true}) {
     try {
       _previewSocket?.close();
     } catch (_) {}
     _previewSocket = null;
-    if (mounted) {
-      setState(() {
-        _streamPreviewFrame = null;
-      });
+    _streamPreviewFrame = null;
+    if (notify && mounted) {
+      setState(() {});
     }
   }
 
