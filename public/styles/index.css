@@ -75,6 +75,7 @@ p {
 
 .download-group {
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     justify-content: center;
 }
@@ -112,7 +113,7 @@ p {
     text-align: left;
 }
 
-.btn-title-container {
+.btn-title-block {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -135,7 +136,7 @@ p {
     pointer-events: none;
 }
 
-.changelog-container {
+.changelog-block {
   background: var(--card);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.75rem;
@@ -268,11 +269,73 @@ footer a {
         font-size: 1.45rem;
     }
 
+    h3 {
+        font-size: 1.3rem;
+    }
+
+    h4 {
+        font-size: 1.1rem;
+    }
+
+    .section-divider {
+        margin: 1.5rem auto 1.1rem;
+    }
+
     .download-column {
-        flex-wrap: nowrap;
-        flex: 1 1 260px;
-        max-width: 360px;
+        flex: 1 1 100%;
         max-width: 100%;
-        flex-basis: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    main {
+        padding: 1rem 0.75rem;
+    }
+
+    h1 {
+        font-size: 1.75rem;
+    }
+
+    h2 {
+        font-size: 1.3rem;
+    }
+
+    h3 {
+        font-size: 1.15rem;
+    }
+
+    h4 {
+        font-size: 1rem;
+    }
+
+    .btn {
+        padding: 0.7rem 0.9rem;
+        border-radius: 0.65rem;
+    }
+
+    .btn-title {
+        font-size: 0.95rem;
+    }
+
+    .btn-title-block {
+        padding: 0.25rem 0 0.25rem 0.7rem;
+    }
+
+    .btn-meta {
+        font-size: 0.75rem;
+    }
+
+    .platform-logo {
+        width: 30px;
+        height: 30px;
+        flex-shrink: 0;
+    }
+
+    .changelog-block {
+        padding: 0.85rem;
+    }
+
+    details summary {
+        font-size: 1.15rem;
     }
 }

@@ -149,3 +149,39 @@
   border-radius: 0.3rem;
   margin: 0.5rem 0;
 }
+
+@media (max-width: 640px) {
+  #changelog-content {
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  #changelog-content h1 { font-size: 1.25rem; }
+  #changelog-content h2 { font-size: 1.15rem; }
+  #changelog-content h3 { font-size: 1.05rem; }
+  #changelog-content h4 { font-size: 0.95rem; }
+  #changelog-content h5,
+  #changelog-content h6 { font-size: 0.85rem; }
+
+  #changelog-content pre {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  #changelog-content th,
+  #changelog-content td {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 420px) {
+  #changelog-content {
+    font-size: 0.85rem;
+  }
+
+  #changelog-content ul,
+  #changelog-content ol {
+    padding-left: 1.15rem;
+  }
+}
