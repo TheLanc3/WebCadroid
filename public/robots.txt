@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://webcadroid.lirqetes.ru/sitemap.xml
