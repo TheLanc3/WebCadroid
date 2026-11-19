@@ -14,8 +14,8 @@
         WindowStyle="None"
         ResizeMode="NoResize"
         mc:Ignorable="d">
-  <Border Background="#1E1E1E"
-          BorderBrush="#333333"
+  <Border Background="#0F272A"
+          BorderBrush="#1E363B"
           BorderThickness="1"
           CornerRadius="15">
     <Grid>
@@ -40,7 +40,7 @@
                    VerticalAlignment="Center"
                    FontSize="16"
                    FontWeight="Bold"
-                   Foreground="White"
+                   Foreground="#EBF7F6"
                    Text="WebCadroid" />
         <StackPanel Margin="0,0,10,0"
                     Orientation="Horizontal"
@@ -66,7 +66,7 @@
               Margin="0,0,0,0"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"
-              Background="#FF303030"
+              Background="#1E363B"
               CornerRadius="18,18,18,18"
               Visibility="Visible"
               Grid.Column="0"
@@ -85,11 +85,11 @@
           <DataGrid.ColumnHeaderStyle>
             <Style TargetType="DataGridColumnHeader">
               <Setter Property="Background" Value="Transparent" />
-              <Setter Property="Foreground" Value="#888888" />
+              <Setter Property="Foreground" Value="#94A3B8" />
               <Setter Property="FontWeight" Value="Bold" />
               <Setter Property="Padding" Value="15,10" />
               <Setter Property="BorderThickness" Value="0,0,0,2" />
-              <Setter Property="BorderBrush" Value="#404040" />
+              <Setter Property="BorderBrush" Value="#234248" />
             </Style>
           </DataGrid.ColumnHeaderStyle>
           <DataGrid.Columns>
@@ -117,8 +117,8 @@
                           Visibility="Hidden">
                     <Button.Style>
                       <Style TargetType="Button">
-                        <!-- По дефолту (NotOpened) -->
-                        <Setter Property="Content" Value="Not Opened" />
+                        <!-- Default (NotOpened) -->
+                        <Setter Property="Content" Value="Connect" />
                         <Setter Property="Background" Value="#6c757d" />
                         <Setter Property="BorderBrush" Value="#ccc" />
                         <Setter Property="Foreground" Value="White" />
@@ -133,22 +133,20 @@
                           </Setter.Value>
                         </Setter>
                         <Style.Triggers>
-                          <!-- Доступен для подключения (Available) -->
+                          <!-- Available for connection -->
                           <DataTrigger Binding="{Binding Status}"
                                        Value="{x:Static enums:StreamStatus.Available}">
                             <Setter Property="Content" Value="Connect" />
                             <Setter Property="Background" Value="#00bfa5" />
                             <Setter Property="BorderBrush" Value="#87c7be" />
-                            <!-- Зеленый -->
                             <Setter Property="IsEnabled" Value="True" />
                           </DataTrigger>
-                          <!-- Активен (Streaming) -->
+                          <!-- Streaming -->
                           <DataTrigger Binding="{Binding Status}"
                                        Value="{x:Static enums:StreamStatus.Streaming}">
                             <Setter Property="Content" Value="Disconnect" />
                             <Setter Property="Background" Value="#304ffe" />
                             <Setter Property="BorderBrush" Value="#b8c2ff" />
-                            <!-- Красный -->
                             <Setter Property="IsEnabled" Value="True" />
                           </DataTrigger>
                         </Style.Triggers>
@@ -177,13 +175,13 @@
         <Border x:Name="NoStreamBorder"
                 Width="495"
                 Height="277"
-                Background="#2D2D30"
+                Background="#1E363B"
                 CornerRadius="16"
                 Visibility="Visible">
           <TextBlock HorizontalAlignment="Center"
                      VerticalAlignment="Center"
                      FontSize="18"
-                     Foreground="Gray"
+                     Foreground="#94A3B8"
                      Text="Stream is not opened" />
         </Border>
           <Border x:Name="StreamImageContainer"
@@ -255,8 +253,8 @@
             Grid.Row="2">
         <!-- Switch bar layout -->
         <Border HorizontalAlignment="Center"
-                Background="#181818"
-                BorderBrush="#651FFF"
+                Background="#1E363B"
+                BorderBrush="#2FE690"
                 BorderThickness="1"
                 CornerRadius="18"
                 Padding="3"

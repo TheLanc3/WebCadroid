@@ -22,7 +22,7 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#3E3E42"/>
+                    <Setter Property="Background" Value="#1E363B"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -38,7 +38,7 @@
         <!-- Style for switch (Segmented Button Switch) -->
         <Style x:Key="SegmentedRadioButton" TargetType="RadioButton">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#AAAAAA" />
+            <Setter Property="Foreground" Value="#94A3B8" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="15,6" />
@@ -53,8 +53,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#651FFF" />
-                                <Setter Property="Foreground" Value="#B388FF" />
+                                <Setter TargetName="border" Property="Background" Value="#34E2A2" />
+                                <Setter Property="Foreground" Value="#EBF7F6" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Cursor" Value="Hand" />
@@ -68,12 +68,12 @@
         <!-- Style for row in DataGrid -->
         <Style x:Key="DeviceRowStyle" TargetType="DataGridRow">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="#EBF7F6" />
             <Setter Property="FontWeight" Value="Semibold" />
             <Setter Property="Height" Value="30" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#404040" />
+                    <Setter Property="Background" Value="#234248" />
                 </Trigger>
             </Style.Triggers>
         </Style>
