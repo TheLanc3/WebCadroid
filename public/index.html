@@ -173,7 +173,7 @@
       return formattedCount;
     }
 
-    function setupButton(btnId, metaId, downloadCntId, asset, fallbackExt) {
+    function setupButton(btnId, metaId, downloadCntId, asset) {
       const btn = document.getElementById(btnId);
       const downloadCnt = document.getElementById(downloadCntId);
       const meta = document.getElementById(metaId);
@@ -181,7 +181,7 @@
       if (asset) {
         btn.href = asset.browser_download_url;
         btn.classList.remove('disabled');
-        meta.textContent = `${fallbackExt} • ${formatBytes(asset.size)}`;
+        meta.textContent = `${formatBytes(asset.size)}`;
         downloadCnt.textContent = `${formatCount(asset.download_count)} Downloads`
       } else {
         btn.href = releasesUrl;
@@ -229,13 +229,13 @@
 
         setupReleaseNotes(bodyText);
 
-        setupButton('btn-win', 'meta-win', 'dwn-win', winAsset, '.exe');
-        setupButton('btn-win-msi', 'meta-win-msi', 'dwn-win-msi', winMsiAsset, '.zip');
-        setupButton('btn-win-zip', 'meta-win-zip', 'dwn-win-zip', winZipAsset, '.zip');
-        setupButton('btn-linux', 'meta-linux', 'dwn-linux', linuxAsset, '.AppImage');
-        setupButton('btn-linux-deb', 'meta-linux-deb', 'dwn-linux-deb', linuxDebAsset, '.deb');
-        setupButton('btn-linux-tar', 'meta-linux-tar', 'dwn-linux-tar', linuxAsset, '.tar');
-        setupButton('btn-android', 'meta-android', 'dwn-android', androidAsset, '.apk');
+        setupButton('btn-win', 'meta-win', 'dwn-win', winAsset);
+        setupButton('btn-win-msi', 'meta-win-msi', 'dwn-win-msi', winMsiAsset);
+        setupButton('btn-win-zip', 'meta-win-zip', 'dwn-win-zip', winZipAsset);
+        setupButton('btn-linux', 'meta-linux', 'dwn-linux', linuxAsset);
+        setupButton('btn-linux-deb', 'meta-linux-deb', 'dwn-linux-deb', linuxDebAsset);
+        setupButton('btn-linux-tar', 'meta-linux-tar', 'dwn-linux-tar', linuxAsset);
+        setupButton('btn-android', 'meta-android', 'dwn-android', androidAsset);
       })
       .catch(error => {
         console.error('Error while checking latest release:', error);
