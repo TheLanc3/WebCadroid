@@ -49,6 +49,23 @@
               <span class="btn-meta" id="dwn-win" />
           </div>
         </a>
+        <a id="btn-win-msi" href="#" class="btn disabled">
+          <svg 
+            class="platform-logo"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 3H11V11H3V3Z" fill="currentColor" />
+            <path d="M3 13H11V21H3V13Z" fill="currentColor" />
+            <path d="M13 3H21V11H13V3Z" fill="currentColor" />
+            <path d="M13 13H21V21H13V13Z" fill="currentColor" />
+          </svg>
+          <div class="btn-title-container">
+              <span class="btn-title">MSI Installer</span>
+              <span class="btn-meta" id="meta-win-msi">Retrieving file...</span>
+              <span class="btn-meta" id="dwn-win-msi" />
+          </div>
+        </a>
         <a id="btn-win-zip" href="#" class="btn disabled">
           <svg 
             class="platform-logo"
@@ -154,7 +171,6 @@
         meta.textContent = `${fallbackExt} • ${formatBytes(asset.size)}`;
         downloadCnt.textContent = `${asset.download_count} Downloads`
       } else {
-        // Если файл не найден, отправляем пользователя на общую страницу релизов
         btn.href = repoUrl;
         btn.classList.remove('disabled');
         meta.textContent = 'Get on GitHub';
@@ -190,7 +206,8 @@
         const assets = data.assets || [];
         const bodyText = data.body || "";
 
-        const winAsset = assets.find(a => a.name.endsWith('.exe') || a.name.endsWith('.msi'));
+        const winAsset = assets.find(a => a.name.endsWith('.exe'));
+        const winMsiAsset = assets.find(a => a.name.endsWith('.msi'));
         const winZipAsset = assets.find(a => a.name.endsWith('.zip'));
         const linuxAsset = assets.find(a => a.name.endsWith('.AppImage') || a.name.endsWith('.deb') || a.name.endsWith('.tar'));
         const linuxDebAsset = assets.find(a => a.name.endsWith('.deb'));
@@ -200,6 +217,7 @@
         setupReleaseNotes(bodyText);
 
         setupButton('btn-win', 'meta-win', 'dwn-win', winAsset, '.exe');
+        setupButton('btn-win-msi', 'meta-win-msi', 'dwn-win-msi', winMsiAsset, '.zip');
         setupButton('btn-win-zip', 'meta-win-zip', 'dwn-win-zip', winZipAsset, '.zip');
         setupButton('btn-linux', 'meta-linux', 'dwn-linux', linuxAsset, '.AppImage');
         setupButton('btn-linux-deb', 'meta-linux-deb', 'dwn-linux-deb', linuxDebAsset, '.deb');
