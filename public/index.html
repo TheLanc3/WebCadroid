@@ -150,7 +150,8 @@
     const REPO_NAME = 'WebCadroid';
 
     const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
-    const repoUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`;
+    const repoUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
+    const releasesUrl = repoUrl + '/releases'
 
     document.getElementById('repo-link').href = repoUrl;
 
@@ -158,6 +159,18 @@
       if (!bytes) return '';
       const mb = (bytes / (1024 * 1024)).toFixed(1);
       return `${mb} MB`;
+    }
+
+    function formatCount(count) {
+      if (!count) return '';
+      let formattedCount = count.toString();
+      if (count >= 1000 && count <= 1000000) {
+        formattedCount = (count / 1000).toFixed(1) + "K";
+      }
+      if (count >= 1000000) {
+        formattedCount = (count / 1000000).toFixed(1) + "M";
+      }
+      return formattedCount;
     }
 
     function setupButton(btnId, metaId, downloadCntId, asset, fallbackExt) {
@@ -169,9 +182,9 @@
         btn.href = asset.browser_download_url;
         btn.classList.remove('disabled');
         meta.textContent = `${fallbackExt} • ${formatBytes(asset.size)}`;
-        downloadCnt.textContent = `${asset.download_count} Downloads`
+        downloadCnt.textContent = `${formatCount(asset.download_count)} Downloads`
       } else {
-        btn.href = repoUrl;
+        btn.href = releasesUrl;
         btn.classList.remove('disabled');
         meta.textContent = 'Get on GitHub';
       }
