@@ -176,7 +176,7 @@
                 Width="495"
                 Height="277"
                 Background="#1E363B"
-                CornerRadius="16"
+                CornerRadius="18"
                 Visibility="Visible">
           <TextBlock HorizontalAlignment="Center"
                      VerticalAlignment="Center"
@@ -187,7 +187,7 @@
           <Border x:Name="StreamImageContainer"
                   Width="495"
                   Height="277"
-                  CornerRadius="16"
+                  CornerRadius="18"
                   ClipToBounds="True"
                   Visibility="Collapsed">
             <Grid>
@@ -202,9 +202,16 @@
                 </Image.Clip>
               </Image>
               <Border x:Name="PreviewPausedOverlay"
-                      Background="#D9181818"
                       CornerRadius="16"
+                      Background="#1E363B"
                       Visibility="Collapsed">
+                      <!-- <Border.Background>
+                        <VisualBrush Visual="{Binding ElementName=StreamImage}" 
+                                    Stretch="UniformToFill" />
+                      </Border.Background>
+                      <Border.Effect>
+                          <BlurEffect Radius="25" KernelType="Gaussian" />
+                      </Border.Effect> -->
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                   <TextBlock HorizontalAlignment="Center"
                              FontSize="16"
@@ -218,31 +225,20 @@
                              Text="Virtual camera continues streaming" />
                 </StackPanel>
               </Border>
-              <Button x:Name="TogglePreviewBtn"
-                      Content="Pause Preview"
+              <Border Background="#112C30"
+                      BorderBrush="#2FE690"
                       HorizontalAlignment="Right"
                       VerticalAlignment="Bottom"
-                      Margin="0,0,12,12"
-                      Padding="10,5"
-                      Cursor="Hand"
-                      Click="TogglePreviewButton_Click">
-                <Button.Style>
-                  <Style TargetType="Button">
-                      <Setter Property="Background" Value="#80000000" />
-                      <Setter Property="BorderBrush" Value="#40ffffff" />
-                      <Setter Property="Foreground" Value="White" />
-                      <Setter Property="Template">
-                        <Setter.Value>
-                          <ControlTemplate TargetType="Button">
-                            <Border CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" >
-                                <ContentPresenter x:Name="contentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
-                            </Border>
-                          </ControlTemplate>
-                        </Setter.Value>
-                      </Setter>
-                  </Style>
-                </Button.Style>
-              </Button>
+                      BorderThickness="1"
+                      CornerRadius="18"
+                      Margin="10">
+                <StackPanel>
+                  <Button x:Name="TogglePreviewBtn"
+                          Content="Pause"
+                          Style="{StaticResource PreviewPauseButton}"
+                          Click="TogglePreviewButton_Click"/>
+                </StackPanel>
+              </Border>
             </Grid>
           </Border>
       </Grid>

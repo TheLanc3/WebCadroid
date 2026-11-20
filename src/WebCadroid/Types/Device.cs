@@ -8,6 +8,10 @@ public class DeviceModel : INotifyPropertyChanged {
     private StreamStatus _status = StreamStatus.NotOpened;
     public string DeviceId { get; set; } = string.Empty;
     public string DeviceName { get; set; } = string.Empty;
+    public CameraConfig Config { get; set; } = new CameraConfig{ 
+        HorizontalFlip = false, VerticalFlip = false,
+        FrameWidth = 1280, FrameHeight = 720, FrameRate = 60 
+    };
     public StreamStatus Status {
         get => _status;
         set {

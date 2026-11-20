@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
+using WebCadroid.Types;
 
 namespace WebCadroid.Services;
 
@@ -25,17 +26,18 @@ public class VirtualCamService : IVirtualCamService, IDisposable {
     [DllImport("Utils/softcam.dll", CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool scIsConnected(IntPtr camera);
+    private int BufferSize { get => _config.FrameWidth * _config.FrameHeight * 3; } // BGR24
 
-    private const int FrameWidth = 1280;
-    private const int FrameHeight = 720;
-    private const float FrameRate = 30.0f;
-    private const int BufferSize = FrameWidth * FrameHeight * 3; // BGR24
-
-    private readonly byte[] _pixelBuffer = new byte[BufferSize];
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
+    private byte[] _pixelBuffer;
     private readonly object _frameLock = new();
 
     private IntPtr _camera = IntPtr.Zero;
     private bool _isInitialized;
+
+    private CameraConfig _config;
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
+
 
     public bool IsActive => _isInitialized && _camera != IntPtr.Zero;
 
@@ -48,14 +50,6 @@ public class VirtualCamService : IVirtualCamService, IDisposable {
             // Register Softcam DirectShow filter if present
             RegisterDll();
 
-            // Create virtual camera instance
-            _camera = scCreateCamera(FrameWidth, FrameHeight, FrameRate);
-
-            if (_camera == IntPtr.Zero) {
-                Debug.WriteLine("[VirtualCamService] Failed to create virtual camera instance.");
-                return false;
-            }
-
             _isInitialized = true;
             Debug.WriteLine("[VirtualCamService] Virtual camera initialized successfully.");
             return true;
@@ -66,7 +60,32 @@ public class VirtualCamService : IVirtualCamService, IDisposable {
         }
     }
 
-    public void SendFrame(byte[] jpegBytes) {
+    public bool CreateInstance(CameraConfig config) {
+        DeleteInstance();
+
+        _config = config;
+        _pixelBuffer = new byte[BufferSize];
+        _camera = scCreateCamera(config.FrameWidth, config.FrameHeight, config.FrameRate);
+
+        if (_camera == IntPtr.Zero) {
+            Debug.WriteLine("[VirtualCamService] Failed to create virtual camera instance.");
+            return false;
+        }
+
+        Debug.WriteLine("[VirtualCamService] Virtual camera instance successfully created.");
+        return true;
+    }
+
+    private void DeleteInstance() {
+        if (_camera != IntPtr.Zero) {
+            lock (_frameLock) {
+                scDeleteCamera(_camera);
+                _camera = IntPtr.Zero;   
+            }
+        }
+    }
+
+    public void SendFrame(byte[] jpegBytes, bool isCap = false) {
         if (!IsActive || jpegBytes == null || jpegBytes.Length == 0) return;
 
         Task.Run(() => {
@@ -74,25 +93,31 @@ public class VirtualCamService : IVirtualCamService, IDisposable {
                 try {
                     using MemoryStream ms = new(jpegBytes);
                     using Bitmap originalBmp = new(ms);
-                    using Bitmap resizedBmp = (originalBmp.Width == FrameWidth && originalBmp.Height == FrameHeight)
+                    using Bitmap resizedBmp = (originalBmp.Width == _config.FrameWidth 
+                        && originalBmp.Height == _config.FrameHeight)
                         ? (Bitmap)originalBmp.Clone()
-                        : new Bitmap(originalBmp, new Size(FrameWidth, FrameHeight));
+                        : new Bitmap(originalBmp, new Size(_config.FrameWidth, _config.FrameHeight));
 
                     // DirectShow requires bottom-up BGR24
-                    resizedBmp.RotateFlip(RotateFlipType.RotateNoneFlipY);
+                    if (!isCap) {
+                        if (_config.VerticalFlip)
+                            resizedBmp.RotateFlip(RotateFlipType.RotateNoneFlipY);
+
+                        if (_config.HorizontalFlip)
+                            resizedBmp.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                    }
 
                     BitmapData data = resizedBmp.LockBits(
-                        new Rectangle(0, 0, FrameWidth, FrameHeight),
+                        new Rectangle(0, 0, _config.FrameWidth, _config.FrameHeight),
                         ImageLockMode.ReadOnly,
                         PixelFormat.Format24bppRgb
                     );
 
                     try {
                         const int bytesPerPixel = 3;
-                        int rowSize = FrameWidth * bytesPerPixel;
+                        int rowSize = _config.FrameWidth * bytesPerPixel;
 
-                        for (int y = 0; y < FrameHeight; y++)
-                        {
+                        for (int y = 0; y < _config.FrameHeight; y++) {
                             IntPtr sourceRow = IntPtr.Add(data.Scan0, y * data.Stride);
                             Marshal.Copy(sourceRow, _pixelBuffer, y * rowSize, rowSize);
                         }
@@ -115,8 +140,7 @@ public class VirtualCamService : IVirtualCamService, IDisposable {
         if (!File.Exists(dllPath)) return;
 
         try {
-            ProcessStartInfo startInfo = new()
-            {
+            ProcessStartInfo startInfo = new() {
                 FileName = "regsvr32.exe",
                 Arguments = $"/s \"{dllPath}\"",
                 UseShellExecute = true,
@@ -134,11 +158,7 @@ public class VirtualCamService : IVirtualCamService, IDisposable {
 
     public void Dispose() {
         lock (_frameLock) {
-            if (_camera != IntPtr.Zero)
-            {
-                scDeleteCamera(_camera);
-                _camera = IntPtr.Zero;
-            }
+            DeleteInstance();
             _isInitialized = false;
         }
         GC.SuppressFinalize(this);

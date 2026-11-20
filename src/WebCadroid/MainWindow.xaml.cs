@@ -174,11 +174,11 @@ public partial class MainWindow : Window {
     private void TogglePreviewButton_Click(object sender, RoutedEventArgs e) {
         _isPreviewPaused = !_isPreviewPaused;
         if (_isPreviewPaused) {
-            TogglePreviewBtn.Content = "Resume Preview";
+            TogglePreviewBtn.Content = "Resume";
             PreviewPausedOverlay.Visibility = Visibility.Visible;
         }
         else {
-            TogglePreviewBtn.Content = "Pause Preview";
+            TogglePreviewBtn.Content = "Pause";
             PreviewPausedOverlay.Visibility = Visibility.Collapsed;
         }
     }
@@ -207,7 +207,7 @@ public partial class MainWindow : Window {
             StreamImageContainer.Visibility = Visibility.Collapsed;
             StreamImage.Source = null;
             _isPreviewPaused = false;
-            TogglePreviewBtn.Content = "Pause Preview";
+            TogglePreviewBtn.Content = "Pause";
             PreviewPausedOverlay.Visibility = Visibility.Collapsed;
         });
     }
@@ -230,10 +230,11 @@ public partial class MainWindow : Window {
         byte[] imageBytes = imageMs.ToArray();
         imageMs.SetLength(0);
 
-        _virtualCamService.SendFrame(imageBytes);
+        _virtualCamService.SendFrame(imageBytes, true);
     }
     private async Task StartWebSocketStreamAsync(string deviceId, int port) {
         StopStream();
+        _virtualCamService.CreateInstance(_activeDevice!.Config);
         _streamCts = new CancellationTokenSource();
         CancellationToken cancellationToken = _streamCts.Token;
         _notifyIcon.Icon = GetNotifyIcon("stream");
@@ -294,8 +295,16 @@ public partial class MainWindow : Window {
                                         bitmap.EndInit();
                                         bitmap.Freeze();
 
+                                        int scaleX = 1;
+                                        int scaleY = 1;
+
+                                        if (_activeDevice!.Config.HorizontalFlip)
+                                            scaleX = -1;
+                                        if (_activeDevice!.Config.VerticalFlip)
+                                            scaleY = -1;
+
                                         TransformedBitmap flippedBitmap = new(bitmap,
-                                                            new ScaleTransform(1, -1));
+                                                            new ScaleTransform(scaleX, scaleY));
                                         flippedBitmap.Freeze();
 
                                         StreamImage.Source = flippedBitmap;
