@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +8,7 @@ class CameraPreviewCard extends StatelessWidget {
   final CameraController? controller;
   final bool isStreaming;
   final bool isPreviewPaused;
+  final Uint8List? streamPreviewFrame;
   final int port;
   final int clientCount;
   final VoidCallback onTogglePreviewPause;
@@ -16,6 +18,7 @@ class CameraPreviewCard extends StatelessWidget {
     required this.controller,
     required this.isStreaming,
     required this.isPreviewPaused,
+    this.streamPreviewFrame,
     required this.port,
     required this.clientCount,
     required this.onTogglePreviewPause,
@@ -42,23 +45,7 @@ class CameraPreviewCard extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    if (controller == null || !controller!.value.isInitialized) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.deepPurpleAccent),
-            SizedBox(height: 16),
-            Text(
-              'Initializing camera...',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Energy saving placeholder when preview is paused
+    // Energy saving placeholder when preview is paused or streaming in background
     if (isPreviewPaused) {
       return Container(
         color: Colors.black, // Pure black for OLED power savings
@@ -73,7 +60,7 @@ class CameraPreviewCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              isStreaming ? 'Streaming Active' : 'Preview Paused',
+              isStreaming ? 'Native Camera2 Stream Active' : 'Preview Paused',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -83,7 +70,7 @@ class CameraPreviewCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               isStreaming
-                  ? 'Port: $port  •  Connected PCs: $clientCount\nPreview paused to minimize power consumption'
+                  ? 'Port: $port  •  Connected PCs: $clientCount\nScreen can be locked! Stream continues running in background.'
                   : 'Tap below to resume camera preview',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white60, fontSize: 13),
@@ -92,7 +79,7 @@ class CameraPreviewCard extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onTogglePreviewPause,
               icon: const Icon(Icons.play_arrow, size: 18),
-              label: const Text('Show Preview'),
+              label: Text(isStreaming ? 'Show Live Preview' : 'Show Preview'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
                 side: const BorderSide(color: Colors.white30),
@@ -104,19 +91,31 @@ class CameraPreviewCard extends StatelessWidget {
       );
     }
 
-    // Live preview
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: controller!.value.previewSize?.height ?? 720,
-            height: controller!.value.previewSize?.width ?? 1280,
-            child: CameraPreview(controller!),
-          ),
-        ),
-        if (isStreaming)
+    // When streaming with preview unpaused: render live frames from stream
+    if (isStreaming) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (streamPreviewFrame != null && streamPreviewFrame!.isNotEmpty)
+            Image.memory(
+              streamPreviewFrame!,
+              gaplessPlayback: true,
+              fit: BoxFit.cover,
+            )
+          else
+            const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.tealAccent),
+                  SizedBox(height: 12),
+                  Text(
+                    'Loading stream preview...',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
           Positioned(
             top: 12,
             right: 12,
@@ -143,8 +142,39 @@ class CameraPreviewCard extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      );
+    }
+
+    // Default viewfinder preview when not streaming
+    if (controller == null || !controller!.value.isInitialized) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.deepPurpleAccent),
+            SizedBox(height: 16),
+            Text(
+              'Initializing camera...',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: controller!.value.previewSize?.height ?? 720,
+            height: controller!.value.previewSize?.width ?? 1280,
+            child: CameraPreview(controller!),
+          ),
+        ),
       ],
     );
   }
 }
-

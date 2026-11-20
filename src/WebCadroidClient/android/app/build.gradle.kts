@@ -47,3 +47,7 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
+}
